@@ -12,6 +12,12 @@ for lib in "$SCRIPT_DIR"/lib/*.sh; do
     source "$lib"
 done
 
+# Load configuration
+load_config
+
+# Global output format
+FORMAT="text"
+
 # ── ASCII Art ───────────────────────────────────────────────────────
 show_logo() {
     echo -e "${CYAN}"
@@ -39,11 +45,14 @@ Commands:
   diagnose [type]    System diagnostics
   packages [action]  Package manager (apt + snap)
   wsl [action]       WSL-specific tools
+  help [command]     Show help for a command
 
 Options:
   -i, --interactive  Launch interactive TUI menu
   -q, --quick        Run quick system scan
   -v, --verbose      Enable verbose logging
+  --format FORMAT    Output format: text (default) or json
+  --yes              Skip confirmation prompts
   -h, --help         Show this help message
   --version          Show version
 
@@ -55,6 +64,7 @@ USAGE
 main() {
     local command=""
     local args=()
+    local exit_code=0
 
     # Parse global flags and extract command
     while [[ $# -gt 0 ]]; do
@@ -86,6 +96,26 @@ main() {
                 VERBOSE=true
                 shift
                 ;;
+            --format)
+                if [[ $# -lt 2 ]]; then
+                    print_error "--format requires an argument"
+                    exit 1
+                fi
+                case "$2" in
+                    text|json)
+                        FORMAT="$2"
+                        ;;
+                    *)
+                        print_error "Invalid format: $2. Use 'text' or 'json'"
+                        exit 1
+                        ;;
+                esac
+                shift 2
+                ;;
+            --yes)
+                FORCE=true
+                shift
+                ;;
             -*)
                 # Pass unknown flags to subcommand
                 args+=("$1")
@@ -108,23 +138,36 @@ main() {
 
     # Dispatch to module
     case "$command" in
+        help)
+            if [[ ${#args[@]} -gt 0 ]]; then
+                case "${args[0]}" in
+                    clean) cmd_clean_help ;; disk) cmd_disk_help ;;
+                    dev) cmd_dev_help ;; diagnose) cmd_diagnose_help ;;
+                    packages) cmd_packages_help ;; wsl) cmd_wsl_help ;;
+                    *) print_error "Unknown command: ${args[0]}"; show_usage; exit 1 ;;
+                esac
+            else
+                show_usage
+            fi
+            exit 0
+            ;;
         clean)
-            cmd_clean "${args[@]+"${args[@]}"}"
+            cmd_clean "${args[@]+"${args[@]}"}" || exit_code=$?
             ;;
         disk)
-            cmd_disk "${args[@]+"${args[@]}"}"
+            cmd_disk "${args[@]+"${args[@]}"}" || exit_code=$?
             ;;
         dev)
-            cmd_dev "${args[@]+"${args[@]}"}"
+            cmd_dev "${args[@]+"${args[@]}"}" || exit_code=$?
             ;;
         diagnose)
-            cmd_diagnose "${args[@]+"${args[@]}"}"
+            cmd_diagnose "${args[@]+"${args[@]}"}" || exit_code=$?
             ;;
         packages)
-            cmd_packages "${args[@]+"${args[@]}"}"
+            cmd_packages "${args[@]+"${args[@]}"}" || exit_code=$?
             ;;
         wsl)
-            cmd_wsl "${args[@]+"${args[@]}"}"
+            cmd_wsl "${args[@]+"${args[@]}"}" || exit_code=$?
             ;;
         *)
             print_error "Unknown command: $command"
@@ -133,6 +176,8 @@ main() {
             exit 1
             ;;
     esac
+
+    exit $exit_code
 }
 
 main "$@"

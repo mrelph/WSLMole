@@ -2,6 +2,8 @@
 # WSLMole - Package Manager Module
 # apt + snap package manager wrapper with audit, update, autoremove, clean, list
 
+# Note: Strict mode set in main script
+
 # Valid package actions
 PACKAGES_ACTIONS=(audit update autoremove clean list)
 
@@ -69,21 +71,22 @@ EOF
 cmd_packages_action() {
     local action="${1:-audit}"
 
+    local rc=0
     case "$action" in
         audit|check)
-            packages_audit
+            packages_audit || rc=$?
             ;;
         update)
-            packages_update
+            packages_update || rc=$?
             ;;
         autoremove)
-            packages_autoremove
+            packages_autoremove || rc=$?
             ;;
         clean)
-            packages_clean
+            packages_clean || rc=$?
             ;;
         list)
-            packages_list
+            packages_list || rc=$?
             ;;
         *)
             print_error "Unknown package action: $action"
@@ -91,6 +94,7 @@ cmd_packages_action() {
             return 1
             ;;
     esac
+    return $rc
 }
 
 # ── 1. Audit ──────────────────────────────────────────────────────
@@ -147,7 +151,9 @@ packages_audit() {
 
     echo ""
 
-    if [[ "$has_updates" == false ]]; then
+    if [[ "${FORMAT:-text}" == "json" ]]; then
+        json_output "$(to_json_kv "has_updates" "$has_updates")"
+    elif [[ "$has_updates" == false ]]; then
         print_success "System is fully up to date!"
     else
         print_info "Run 'wslmole packages update' to install updates"

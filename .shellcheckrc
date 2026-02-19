@@ -1,0 +1,3 @@
+# ShellCheck configuration for WSLMole
+disable=SC1091  # Not following: file was not specified as input
+disable=SC2034  # Variable appears unused (many are used via sourcing)

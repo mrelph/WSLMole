@@ -2,18 +2,22 @@
 # WSLMole - Quick Scan Module
 # Fast system health check with score and recommendations
 
+# Note: Strict mode set in main script
+
 # ── Quick Scan ────────────────────────────────────────────────────
 run_quick_scan() {
-    # ASCII art mole
-    echo -e "${CYAN}"
-    cat << 'MOLE'
+    # ASCII art mole (text mode only)
+    if [[ "${FORMAT:-text}" != "json" ]]; then
+        echo -e "${CYAN}"
+        cat << 'MOLE'
       /\_/\
      ( o.o )
       > ^ <   WSLMole Quick Scan
      /|   |\
     (_|   |_)
 MOLE
-    echo -e "${NC}"
+        echo -e "${NC}"
+    fi
 
     # ── Cleanable Space Calculation ───────────────────────────────
 
@@ -154,6 +158,22 @@ MOLE
     else
         score_color="$RED"
         grade="Poor"
+    fi
+
+    # JSON output mode
+    if [[ "${FORMAT:-text}" == "json" ]]; then
+        local rec_json="["
+        local rfirst=true
+        for rec in "${recommendations[@]+"${recommendations[@]}"}"; do
+            if [[ "$rfirst" == true ]]; then rfirst=false; else rec_json+=","; fi
+            rec="${rec//\\/\\\\}"
+            rec="${rec//\"/\\\"}"
+            rec_json+="\"${rec}\""
+        done
+        rec_json+="]"
+
+        json_output "{\"health_score\":${health_score},\"grade\":\"${grade}\",\"cleanable\":{\"apt_cache\":${apt_cache_bytes},\"old_logs\":${old_logs_bytes},\"snap\":${snap_bytes},\"tmp\":${tmp_bytes},\"total\":${cleanable_total}},\"recommendations\":${rec_json}}"
+        return 0
     fi
 
     print_header "Health Score"

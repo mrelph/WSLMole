@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  shellcheck:
+    name: ShellCheck Linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: '.'
+          severity: warning
+          
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y whiptail bc
+      
+      - name: Run test suite
+        run: |
+          chmod +x tests/*.sh wslmole lint.sh
+          ./tests/run_all.sh
+      
+      - name: Test installation
+        run: ./install.sh
+          
+  smoke-test:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y whiptail bc
+      
+      - name: Test CLI commands
+        run: |
+          chmod +x wslmole
+          ./wslmole --help
+          ./wslmole --version
+          ./wslmole --format json --version
+          ./wslmole clean --help
+          ./wslmole disk --help
+          ./wslmole dev --help
+          ./wslmole diagnose --help
+          ./wslmole packages --help
+          ./wslmole wsl --help || true  # May fail if not in WSL
+
+      - name: Verify man page
+        run: mandoc docs/wslmole.1 > /dev/null

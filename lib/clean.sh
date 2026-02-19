@@ -2,6 +2,8 @@
 # WSLMole - System Cleanup Module
 # 7 cleanup categories: apt, snap, logs, tmp, browser, user, wsl
 
+# Note: Strict mode set in main script
+
 # All valid cleanup categories
 CLEAN_CATEGORIES=(apt snap logs tmp browser user wsl)
 
@@ -63,12 +65,18 @@ cmd_clean() {
         echo ""
     fi
 
+    local rc=0
     for cat in "${categories[@]}"; do
-        cmd_clean_category "$cat"
+        cmd_clean_category "$cat" || rc=1
     done
 
     echo ""
-    print_success "Cleanup scan complete."
+    if [[ "${FORMAT:-text}" == "json" ]]; then
+        json_output "$(to_json_kv "status" "complete" "dry_run" "$DRY_RUN" "categories" "${categories[*]}")"
+    else
+        print_success "Cleanup scan complete."
+    fi
+    return $rc
 }
 
 # ── Help ───────────────────────────────────────────────────────────

@@ -2,6 +2,8 @@
 # WSLMole - WSL-Specific Tools Module
 # WSL info, memory, disk compact guide, interop status
 
+# Note: Strict mode set in main script
+
 # Valid WSL actions
 WSL_ACTIONS=(info memory compact interop)
 
@@ -67,18 +69,19 @@ cmd_wsl_action() {
         return 1
     fi
 
+    local rc=0
     case "$action" in
         info)
-            wsl_info
+            wsl_info || rc=$?
             ;;
         memory|mem)
-            wsl_memory
+            wsl_memory || rc=$?
             ;;
         compact|compact-guide)
-            wsl_compact_guide
+            wsl_compact_guide || rc=$?
             ;;
         interop)
-            wsl_interop
+            wsl_interop || rc=$?
             ;;
         *)
             print_error "Unknown WSL action: $action"
@@ -86,6 +89,7 @@ cmd_wsl_action() {
             return 1
             ;;
     esac
+    return $rc
 }
 
 # ── Helper: Get Windows Username ──────────────────────────────────
@@ -186,6 +190,13 @@ wsl_info() {
         done < /etc/wsl.conf
     else
         print_info "No /etc/wsl.conf found"
+    fi
+
+    if [[ "${FORMAT:-text}" == "json" ]]; then
+        local wsl_ver; wsl_ver=$(get_wsl_version)
+        local kernel; kernel=$(uname -r 2>/dev/null || echo "unknown")
+        local distro; distro=$(_get_distro_name)
+        json_output "$(to_json_kv "wsl_version" "$wsl_ver" "kernel" "$kernel" "distro" "$distro" "hostname" "$(hostname 2>/dev/null || echo unknown)")"
     fi
 
     echo ""
@@ -319,9 +330,9 @@ wsl_compact_guide() {
     echo -e "    ${BOLD}Step 2:${NC} Find the vhdx file (run in PowerShell):"
     echo ""
     if [[ -n "$win_username" ]]; then
-        echo "      Get-ChildItem -Path \"C:\\Users\\${win_username}\\AppData\\Local\\Packages\\\" -Recurse -Filter \"ext4.vhdx\" -ErrorAction SilentlyContinue | Select-Object FullName"
+        printf '      Get-ChildItem -Path "C:\\Users\\%s\\AppData\\Local\\Packages\\" -Recurse -Filter "ext4.vhdx" -ErrorAction SilentlyContinue | Select-Object FullName\n' "$win_username"
     else
-        echo "      Get-ChildItem -Path \"C:\\Users\\<USERNAME>\\AppData\\Local\\Packages\\\" -Recurse -Filter \"ext4.vhdx\" -ErrorAction SilentlyContinue | Select-Object FullName"
+        printf '      Get-ChildItem -Path "C:\\Users\\<USERNAME>\\AppData\\Local\\Packages\\" -Recurse -Filter "ext4.vhdx" -ErrorAction SilentlyContinue | Select-Object FullName\n'
     fi
     echo ""
 

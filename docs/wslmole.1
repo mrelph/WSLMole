@@ -1,0 +1,194 @@
+.\" WSLMole man page
+.TH WSLMOLE 1 "February 2026" "WSLMole 1.0.0" "User Commands"
+.SH NAME
+wslmole \- WSL system optimization tool
+.SH SYNOPSIS
+.B wslmole
+[\fIcommand\fR] [\fIoptions\fR]
+.SH DESCRIPTION
+.B wslmole
+is a terminal-based system optimization tool built for WSL2 (Windows Subsystem
+for Linux) environments. It scans, cleans, and tunes your WSL instance through
+an interactive whiptail TUI or direct CLI commands.
+.PP
+Running
+.B wslmole
+with no arguments launches the interactive TUI menu.
+.SH COMMANDS
+.TP
+.B clean
+System cleanup: APT cache, snap revisions, log files, temp files, browser
+cache, user data, and WSL-specific cleanup.
+.TP
+.B disk \fR[\fIpath\fR]
+Disk usage analysis with multiple view modes including summary, tree view,
+largest files/folders, file type breakdown, and old file detection.
+.TP
+.B dev \fR[\fIpath\fR]
+Developer artifact cleanup: node_modules, target, __pycache__, .gradle, venv,
+build, dist, and other build artifacts.
+.TP
+.B diagnose \fR[\fItype\fR]
+System diagnostics: top processes, memory breakdown, systemd service status,
+and WSL resource information.
+.TP
+.B packages \fR[\fIaction\fR]
+Package manager wrapper for APT and Snap: audit updates, upgrade packages,
+autoremove unused dependencies, clean caches, and list installed packages.
+.TP
+.B wsl \fR[\fIaction\fR]
+WSL-specific tools: environment info, memory configuration, virtual disk
+compact guide, and Windows interop status.
+.SH GLOBAL OPTIONS
+.TP
+.BR \-i ", " \-\-interactive
+Launch the interactive TUI menu.
+.TP
+.BR \-q ", " \-\-quick
+Run a quick system health scan with score and recommendations.
+.TP
+.BR \-v ", " \-\-verbose
+Enable verbose logging to ~/.local/share/wslmole/wslmole.log.
+.TP
+.BI \-\-format " FORMAT"
+Output format:
+.B text
+(default) or
+.BR json .
+.TP
+.B \-\-yes
+Skip all confirmation prompts.
+.TP
+.BR \-h ", " \-\-help
+Show help message.
+.TP
+.B \-\-version
+Show version number.
+.SH CLEAN OPTIONS
+.TP
+.BR \-n ", " \-\-dry\-run
+Preview what would be cleaned without deleting anything.
+.TP
+.BR \-f ", " \-\-force
+Skip all confirmation prompts.
+.TP
+.BI \-c ", " \-\-category " LIST"
+Comma-separated list of categories to clean:
+.BR apt ", " snap ", " logs ", " tmp ", " browser ", " user ", " wsl ", " all .
+.SH DISK OPTIONS
+.TP
+.BI \-m ", " \-\-mode " MODE"
+Analysis mode:
+.BR summary ", " tree ", " files ", " folders ", " types ", " old .
+Default:
+.BR summary .
+.TP
+.BI \-d ", " \-\-depth " N"
+Tree depth for tree mode. Default: 3.
+.TP
+.BI \-n ", " \-\-top " N"
+Number of results to show. Default: 10.
+.SH DEV OPTIONS
+.TP
+.BR \-n ", " \-\-dry\-run
+Preview artifacts without deleting.
+.TP
+.BR \-f ", " \-\-force
+Skip confirmation prompts.
+.TP
+.BI \-t ", " \-\-types " LIST"
+Comma-separated artifact types:
+.BR node_modules ", " target ", " __pycache__ ", " .gradle ", " venv ", "
+.BR .venv ", " build ", " dist ", " .next ", " .nuxt ", " .cache ", "
+.BR vendor ", " .tox ", " .pytest_cache ", " coverage ", " .nyc_output ", " all .
+.TP
+.BI \-\-older\-than " DAYS"
+Only target artifacts older than DAYS days.
+.SH DIAGNOSE TYPES
+.TP
+.B all
+Run all diagnostics (default).
+.TP
+.B process
+Top CPU and memory consuming processes.
+.TP
+.B memory
+Memory usage breakdown with visual progress bar.
+.TP
+.B service
+Systemd service status and resource usage.
+.TP
+.B wsl
+WSL-specific environment and resource info.
+.SH PACKAGES ACTIONS
+.TP
+.B audit
+Check for available APT and Snap updates (default).
+.TP
+.B update
+Update all APT and Snap packages.
+.TP
+.B autoremove
+Remove unused APT dependencies.
+.TP
+.B clean
+Clean APT cache and report old Snap revisions.
+.TP
+.B list
+List installed APT and Snap packages.
+.SH WSL ACTIONS
+.TP
+.B info
+WSL environment info, .wslconfig, and /etc/wsl.conf (default).
+.TP
+.B memory
+Memory allocation, usage, and .wslconfig limits.
+.TP
+.B compact
+Guide to compacting the WSL2 virtual disk (vhdx).
+.TP
+.B interop
+Windows/Linux interop status and PATH integration.
+.SH EXAMPLES
+.TP
+Launch interactive menu:
+.B wslmole
+.TP
+Quick health scan:
+.B wslmole \-q
+.TP
+Preview all cleanup categories:
+.B wslmole clean \-\-dry\-run
+.TP
+Clean APT and log files only:
+.B wslmole clean \-c apt,logs
+.TP
+Find 20 largest files in home directory:
+.B wslmole disk ~ \-m files \-n 20
+.TP
+Clean old developer artifacts:
+.B wslmole dev ~/projects \-\-older\-than 30
+.SH FILES
+.TP
+.I ~/.local/share/wslmole/wslmole.log
+Log file (when \-\-verbose is enabled). Rotated at 1MB.
+.TP
+.I ~/.config/wslmole/config
+Optional configuration file sourced at startup.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+General error or blocked operation.
+.TP
+.B 2
+Resource not found.
+.TP
+.B 3
+Permission denied.
+.SH BUGS
+Report bugs at https://github.com/mrelph/WSLMole/issues
+.SH SEE ALSO
+.BR wsl.exe (1)

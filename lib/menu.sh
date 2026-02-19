@@ -2,6 +2,8 @@
 # WSLMole - Interactive TUI Menu System
 # Whiptail-based menu for interactive mode
 
+# Note: Strict mode set in main script
+
 # ── Terminal Dimensions ──────────────────────────────────────────────
 TERM_HEIGHT=$(tput lines 2>/dev/null || echo 24)
 TERM_WIDTH=$(tput cols 2>/dev/null || echo 80)
@@ -81,18 +83,37 @@ menu_clean() {
 
         case "$choice" in
             1)  cmd_clean_category "preview" ;;
-            2)  cmd_clean_category "apt" ;;
-            3)  cmd_clean_category "snap" ;;
-            4)  cmd_clean_category "logs" ;;
-            5)  cmd_clean_category "temp" ;;
-            6)  cmd_clean_category "browser" ;;
-            7)  cmd_clean_category "userdata" ;;
-            8)  cmd_clean_category "wsl" ;;
-            9)  cmd_clean_category "all" ;;
+            2)  _menu_clean_confirm "apt" ;;
+            3)  _menu_clean_confirm "snap" ;;
+            4)  _menu_clean_confirm "logs" ;;
+            5)  _menu_clean_confirm "temp" ;;
+            6)  _menu_clean_confirm "browser" ;;
+            7)  _menu_clean_confirm "userdata" ;;
+            8)  _menu_clean_confirm "wsl" ;;
+            9)  _menu_clean_confirm "all" ;;
             10) return ;;
         esac
         press_enter
     done
+}
+
+# Helper: preview then confirm for cleanup categories
+_menu_clean_confirm() {
+    local category="$1"
+    # Preview first
+    local prev_dry_run="$DRY_RUN"
+    DRY_RUN=true
+    cmd_clean_category "$category"
+    DRY_RUN="$prev_dry_run"
+    echo ""
+    # Ask to proceed
+    if whiptail --title "Confirm Cleanup" \
+        --yesno "Proceed with ${category} cleanup?" \
+        "$TERM_HEIGHT" "$TERM_WIDTH" 3>&1 1>&2 2>&3; then
+        cmd_clean_category "$category"
+    else
+        print_info "Cleanup cancelled."
+    fi
 }
 
 # ── Disk Analysis Submenu ────────────────────────────────────────────

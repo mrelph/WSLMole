@@ -2,6 +2,8 @@
 # WSLMole - System Diagnostics Module
 # 4 diagnostic types: process, memory, service, wsl
 
+# Note: Strict mode set in main script
+
 # Valid diagnostic types
 DIAGNOSE_TYPES=(process memory service wsl)
 
@@ -63,26 +65,27 @@ EOF
 cmd_diagnose_type() {
     local dtype="${1:-all}"
 
+    local rc=0
     case "$dtype" in
         all)
-            diagnose_processes
-            diagnose_memory
-            diagnose_services
+            diagnose_processes || rc=1
+            diagnose_memory || rc=1
+            diagnose_services || rc=1
             if is_wsl; then
-                diagnose_wsl_resources
+                diagnose_wsl_resources || rc=1
             fi
             ;;
         process|processes)
-            diagnose_processes
+            diagnose_processes || rc=$?
             ;;
         memory|mem)
-            diagnose_memory
+            diagnose_memory || rc=$?
             ;;
         service|services)
-            diagnose_services
+            diagnose_services || rc=$?
             ;;
         wsl)
-            diagnose_wsl_resources
+            diagnose_wsl_resources || rc=$?
             ;;
         *)
             print_error "Unknown diagnostic type: $dtype"
@@ -90,6 +93,7 @@ cmd_diagnose_type() {
             return 1
             ;;
     esac
+    return $rc
 }
 
 # ── 1. Process Diagnostics ─────────────────────────────────────────
@@ -219,6 +223,10 @@ diagnose_memory() {
         printf "    %-14s  %s\n" "Free" "$(format_size "$swap_free")"
     else
         print_info "Swap not configured"
+    fi
+
+    if [[ "${FORMAT:-text}" == "json" ]]; then
+        json_output "{\"memory\":{\"total\":$mem_total,\"used\":$mem_used,\"available\":$mem_available,\"percentage\":$mem_percentage},\"swap\":{\"total\":$swap_total,\"free\":$swap_free}}"
     fi
 
     echo ""

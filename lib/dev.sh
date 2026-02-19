@@ -2,6 +2,8 @@
 # WSLMole - Developer Artifact Cleanup Module
 # Finds and removes build artifacts, dependency dirs, and caches
 
+# Note: Strict mode set in main script
+
 # All recognized developer artifact directory names
 DEV_ARTIFACTS=(
     node_modules target __pycache__ .gradle venv .venv
@@ -167,15 +169,23 @@ cmd_dev_scan() {
 
     # Run find: look for matching directories, prune to avoid descending into them
     local found_artifacts=()
+    local find_tmp
+    find_tmp=$(mktemp)
+    find "$path" -type d \( "${find_args[@]}" \) -prune 2>/dev/null > "$find_tmp" &
+    local find_pid=$!
+    print_info "Scanning for artifacts..."
+    show_progress $find_pid
+    wait $find_pid 2>/dev/null || true
     while IFS= read -r dir; do
         [[ -n "$dir" ]] || continue
         found_artifacts+=("$dir")
-    done < <(find "$path" -type d \( "${find_args[@]}" \) -prune 2>/dev/null || true)
+    done < "$find_tmp"
+    rm -f "$find_tmp"
 
     local count=0
     local total_size=0
 
-    for artifact in "${found_artifacts[@]}"; do
+    for artifact in "${found_artifacts[@]+${found_artifacts[@]}}"; do
         # If older_than is set, check modification time
         if [[ -n "$older_than" ]]; then
             local mtime_days
@@ -205,14 +215,15 @@ cmd_dev_scan() {
 
     # Summary
     echo ""
-    if [[ $count -eq 0 ]]; then
+    if [[ "${FORMAT:-text}" == "json" ]]; then
+        json_output "$(to_json_kv "path" "$path" "count" "$count" "total_bytes" "$total_size" "dry_run" "$DRY_RUN")"
+    elif [[ $count -eq 0 ]]; then
         print_success "No developer artifacts found"
     else
         print_info "Found $count artifact(s) totaling $(format_size "$total_size")"
-    fi
-
-    if [[ "$DRY_RUN" == true && $count -gt 0 ]]; then
-        echo ""
-        print_info "Run without --dry-run to delete these artifacts"
+        if [[ "$DRY_RUN" == true ]]; then
+            echo ""
+            print_info "Run without --dry-run to delete these artifacts"
+        fi
     fi
 }

@@ -1,0 +1,19 @@
+# WSLMole Configuration File
+# Copy to ~/.config/wslmole/config to customize behavior
+#
+# All settings are optional. Uncomment and modify as needed.
+
+# Default dry-run mode (true = preview only, false = execute)
+# DRY_RUN=false
+
+# Skip confirmation prompts
+# FORCE=false
+
+# Enable verbose logging
+# VERBOSE=false
+
+# Log level: DEBUG, INFO, WARN, ERROR
+# WSLMOLE_LOG_LEVEL="INFO"
+
+# Additional protected paths (appended to built-in list)
+# WSLMOLE_PROTECTED_PATHS_EXTRA=("/my/important/dir" "/another/path")

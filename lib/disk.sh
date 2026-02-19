@@ -2,6 +2,8 @@
 # WSLMole - Disk Analysis Module
 # 6 analysis modes: summary, tree, files, folders, types, old
 
+# Note: Strict mode set in main script
+
 # Valid disk analysis modes
 DISK_MODES=(summary tree files folders types old)
 
@@ -106,24 +108,25 @@ cmd_disk_mode() {
     # Resolve to absolute path
     path="$(cd "$path" && pwd)"
 
+    local rc=0
     case "$mode" in
         summary)
-            disk_summary "$path"
+            disk_summary "$path" || rc=$?
             ;;
         tree)
-            disk_tree "$path" "$depth"
+            disk_tree "$path" "$depth" || rc=$?
             ;;
         files)
-            disk_largest_files "$path" "$top"
+            disk_largest_files "$path" "$top" || rc=$?
             ;;
         folders)
-            disk_largest_folders "$path" "$top"
+            disk_largest_folders "$path" "$top" || rc=$?
             ;;
         types)
-            disk_file_types "$path"
+            disk_file_types "$path" || rc=$?
             ;;
         old)
-            disk_old_files "$path" "$top"
+            disk_old_files "$path" "$top" || rc=$?
             ;;
         *)
             print_error "Unknown disk analysis mode: $mode"
@@ -131,6 +134,7 @@ cmd_disk_mode() {
             return 1
             ;;
     esac
+    return $rc
 }
 
 # ── 1. Summary ─────────────────────────────────────────────────────
@@ -175,6 +179,12 @@ disk_summary() {
         fi
     fi
 
+    if [[ "${FORMAT:-text}" == "json" ]]; then
+        local fs_json
+        fs_json=$(df -B1 "$path" 2>/dev/null | awk 'NR==2{printf "{\"filesystem\":\"%s\",\"size\":%s,\"used\":%s,\"available\":%s,\"mount\":\"%s\"}", $1,$2,$3,$4,$6}')
+        json_output "{\"mode\":\"summary\",\"path\":\"$path\",\"fs\":${fs_json:-{}}}"
+    fi
+
     echo ""
 }
 
@@ -215,8 +225,15 @@ disk_largest_files() {
 
     print_header "Largest Files: $path (top $top)"
 
+    print_info "Scanning..."
+    local results_tmp
+    results_tmp=$(mktemp)
+    (find "$path" -type f -printf '%s\t%p\n' 2>/dev/null | sort -rn | head -"$top" > "$results_tmp") &
+    show_progress $!
+    wait $! 2>/dev/null || true
     local results
-    results=$(find "$path" -type f -printf '%s\t%p\n' 2>/dev/null | sort -rn | head -"$top" || true)
+    results=$(cat "$results_tmp")
+    rm -f "$results_tmp"
 
     if [[ -z "$results" ]]; then
         print_info "No files found in $path"
@@ -231,6 +248,15 @@ disk_largest_files() {
         printf "    %2d. %-12s %s\n" "$rank" "$formatted_size" "$filepath"
         rank=$((rank + 1))
     done <<< "$results"
+
+    if [[ "${FORMAT:-text}" == "json" ]]; then
+        local items="[" jfirst=true
+        while IFS=$'\t' read -r bytes filepath; do
+            [[ "$jfirst" == true ]] && jfirst=false || items+=","
+            items+="$(to_json_kv "bytes" "$bytes" "path" "$filepath")"
+        done <<< "$results"
+        json_output "{\"mode\":\"files\",\"path\":\"$path\",\"items\":${items}]}"
+    fi
 
     echo ""
 }
@@ -316,8 +342,15 @@ disk_old_files() {
 
     print_header "Old Files (90+ days): $path (top $top by size)"
 
+    print_info "Scanning..."
+    local results_tmp
+    results_tmp=$(mktemp)
+    (find "$path" -type f -mtime +90 -printf '%s\t%T+\t%p\n' 2>/dev/null | sort -rn | head -"$top" > "$results_tmp") &
+    show_progress $!
+    wait $! 2>/dev/null || true
     local results
-    results=$(find "$path" -type f -mtime +90 -printf '%s\t%T+\t%p\n' 2>/dev/null | sort -rn | head -"$top" || true)
+    results=$(cat "$results_tmp")
+    rm -f "$results_tmp"
 
     if [[ -z "$results" ]]; then
         print_info "No files older than 90 days found in $path"
@@ -337,6 +370,15 @@ disk_old_files() {
         date_display="${date_display//T/ }"
         printf "    %-12s  %-20s  %s\n" "$formatted_size" "$date_display" "$filepath"
     done <<< "$results"
+
+    if [[ "${FORMAT:-text}" == "json" ]]; then
+        local items="[" jfirst=true
+        while IFS=$'\t' read -r bytes mtime filepath; do
+            [[ "$jfirst" == true ]] && jfirst=false || items+=","
+            items+="$(to_json_kv "bytes" "$bytes" "modified" "$mtime" "path" "$filepath")"
+        done <<< "$results"
+        json_output "{\"mode\":\"old\",\"path\":\"$path\",\"items\":${items}]}"
+    fi
 
     echo ""
 }

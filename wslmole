@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# WSLMole - WSL System Optimization Tool
+# https://github.com/mrelph/WSLMole
+set -euo pipefail
+
+# Resolve script directory (works with symlinks)
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+# Source all library modules
+for lib in "$SCRIPT_DIR"/lib/*.sh; do
+    # shellcheck source=/dev/null
+    source "$lib"
+done
+
+# ── ASCII Art ───────────────────────────────────────────────────────
+show_logo() {
+    echo -e "${CYAN}"
+    cat << 'LOGO'
+ __      __  ___ _     __  __       _
+ \ \    / / / __| |   |  \/  | ___ | | ___
+  \ \/\/ /  \__ \ |__ | |\/| |/ _ \| |/ -_)
+   \_/\_/   |___/____||_|  |_|\___/|_|\___|
+LOGO
+    echo -e "${NC}"
+    echo -e "        ${BOLD}WSL System Optimization Tool${NC} v${WSLMOLE_VERSION}"
+    echo ""
+}
+
+# ── Usage ───────────────────────────────────────────────────────────
+show_usage() {
+    show_logo
+    cat << 'USAGE'
+Usage: wslmole [command] [options]
+
+Commands:
+  clean              System cleanup (temp files, caches, logs)
+  disk [path]        Disk usage analysis
+  dev [path]         Developer artifact cleanup
+  diagnose [type]    System diagnostics
+  packages [action]  Package manager (apt + snap)
+  wsl [action]       WSL-specific tools
+
+Options:
+  -i, --interactive  Launch interactive TUI menu
+  -q, --quick        Run quick system scan
+  -v, --verbose      Enable verbose logging
+  -h, --help         Show this help message
+  --version          Show version
+
+Run 'wslmole <command> --help' for command-specific options.
+USAGE
+}
+
+# ── Main CLI Parser ─────────────────────────────────────────────────
+main() {
+    local command=""
+    local args=()
+
+    # Parse global flags and extract command
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                show_usage
+                exit 0
+                ;;
+            --version)
+                echo "WSLMole v${WSLMOLE_VERSION}"
+                exit 0
+                ;;
+            -i|--interactive)
+                run_interactive_menu
+                exit 0
+                ;;
+            -q|--quick)
+                run_quick_scan
+                exit 0
+                ;;
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            -*)
+                # Pass unknown flags to subcommand
+                args+=("$1")
+                shift
+                ;;
+            *)
+                if [[ -z "$command" ]]; then
+                    command="$1"
+                else
+                    args+=("$1")
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    init_logging
+
+    # No command = interactive mode
+    if [[ -z "$command" ]]; then
+        run_interactive_menu
+        exit 0
+    fi
+
+    # Dispatch to module
+    case "$command" in
+        clean)
+            cmd_clean "${args[@]+"${args[@]}"}"
+            ;;
+        disk)
+            cmd_disk "${args[@]+"${args[@]}"}"
+            ;;
+        dev)
+            cmd_dev "${args[@]+"${args[@]}"}"
+            ;;
+        diagnose)
+            cmd_diagnose "${args[@]+"${args[@]}"}"
+            ;;
+        packages)
+            cmd_packages "${args[@]+"${args[@]}"}"
+            ;;
+        wsl)
+            cmd_wsl "${args[@]+"${args[@]}"}"
+            ;;
+        *)
+            print_error "Unknown command: $command"
+            echo ""
+            show_usage
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

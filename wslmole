@@ -58,6 +58,13 @@ main() {
 
     # Parse global flags and extract command
     while [[ $# -gt 0 ]]; do
+        # Once a command is identified, pass all remaining args to it
+        if [[ -n "$command" ]]; then
+            args+=("$1")
+            shift
+            continue
+        fi
+
         case "$1" in
             -h|--help)
                 show_usage
@@ -85,11 +92,7 @@ main() {
                 shift
                 ;;
             *)
-                if [[ -z "$command" ]]; then
-                    command="$1"
-                else
-                    args+=("$1")
-                fi
+                command="$1"
                 shift
                 ;;
         esac

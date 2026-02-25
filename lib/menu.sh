@@ -1,52 +1,69 @@
 #!/usr/bin/env bash
-# WSLMole - Interactive TUI Menu System
-# Whiptail-based menu for interactive mode
+# WSLMole - Interactive CLI Menu System
+# Pure bash inline menus - no whiptail dependency
 
 # Note: Strict mode set in main script
 
-# ── Terminal Dimensions ──────────────────────────────────────────────
-TERM_HEIGHT=$(tput lines 2>/dev/null || echo 24)
-TERM_WIDTH=$(tput cols 2>/dev/null || echo 80)
-MENU_HEIGHT=$((TERM_HEIGHT - 10))
+# ── Menu Helper ────────────────────────────────────────────────────
+# Usage: _menu_prompt "Title" "option1" "option2" ... "optionN"
+# Last option is always treated as the exit/back option (mapped to 0)
+# Returns: selected number via $REPLY
+_menu_prompt() {
+    local title="$1"
+    shift
+    local -a options=("$@")
+    local count=${#options[@]}
+    local last_idx=$((count - 1))
 
-# ── Helpers ──────────────────────────────────────────────────────────
+    echo ""
+    echo -e "  ${BOLD}${title}${NC}"
+    echo -e "  ${DIM}─────────────────────────────────${NC}"
+    echo ""
+
+    # Print numbered options (last item gets 0)
+    local i
+    for ((i = 0; i < last_idx; i++)); do
+        echo -e "    ${BOLD}$((i + 1))${NC}) ${options[$i]}"
+    done
+    echo -e "    ${BOLD}0${NC}) ${options[$last_idx]}"
+    echo ""
+
+    local max=$last_idx
+    while true; do
+        echo -en "  ${CYAN}Choose [0-${max}]:${NC} "
+        read -r REPLY
+        # Validate input
+        if [[ "$REPLY" =~ ^[0-9]+$ ]] && [[ "$REPLY" -ge 0 ]] && [[ "$REPLY" -le $max ]]; then
+            return 0
+        fi
+        echo -e "  ${RED}Invalid choice.${NC} Enter a number 0-${max}."
+    done
+}
+
+# ── Helpers ────────────────────────────────────────────────────────
 press_enter() {
     echo ""
     echo -en "  ${DIM}Press Enter to continue...${NC}"
     read -r
 }
 
-# ── Main Interactive Menu ────────────────────────────────────────────
+# ── Main Interactive Menu ──────────────────────────────────────────
 run_interactive_menu() {
-    # Check for whiptail
-    if ! command -v whiptail &>/dev/null; then
-        print_error "whiptail is required for interactive mode but is not installed."
-        echo ""
-        print_info "Install it with:"
-        echo "    sudo apt install whiptail"
-        echo ""
-        exit 1
-    fi
-
     show_logo
 
     while true; do
-        local choice
-        choice=$(whiptail --title "WSLMole - Main Menu" \
-            --menu "Choose an option:" \
-            "$TERM_HEIGHT" "$TERM_WIDTH" "$MENU_HEIGHT" \
-            "1" "System Cleanup" \
-            "2" "Disk Analysis" \
-            "3" "Developer Cleanup" \
-            "4" "System Diagnostics" \
-            "5" "Package Manager" \
-            "6" "WSL Tools" \
-            "7" "Quick Health Scan" \
-            "8" "Auto-Fix" \
-            "9" "Exit" \
-            3>&1 1>&2 2>&3) || break
+        _menu_prompt "WSLMole Interactive Menu" \
+            "System Cleanup" \
+            "Disk Analysis" \
+            "Developer Cleanup" \
+            "System Diagnostics" \
+            "Package Manager" \
+            "WSL Tools" \
+            "Quick Health Scan" \
+            "Auto-Fix" \
+            "Exit"
 
-        case "$choice" in
+        case "$REPLY" in
             1) menu_clean ;;
             2) menu_disk ;;
             3) menu_dev ;;
@@ -55,7 +72,7 @@ run_interactive_menu() {
             6) menu_wsl ;;
             7) run_quick_scan; press_enter ;;
             8) cmd_fix; press_enter ;;
-            9) break ;;
+            0) break ;;
         esac
     done
 
@@ -64,105 +81,90 @@ run_interactive_menu() {
     echo ""
 }
 
-# ── System Cleanup Submenu ───────────────────────────────────────────
+# ── System Cleanup Submenu ─────────────────────────────────────────
 menu_clean() {
     while true; do
-        local choice
-        choice=$(whiptail --title "System Cleanup" \
-            --menu "Choose a cleanup category:" \
-            "$TERM_HEIGHT" "$TERM_WIDTH" "$MENU_HEIGHT" \
-            "1"  "Preview All" \
-            "2"  "APT Cache" \
-            "3"  "Snap Cache" \
-            "4"  "Log Files" \
-            "5"  "Temp Files" \
-            "6"  "Browser Cache" \
-            "7"  "User Data" \
-            "8"  "WSL Specific" \
-            "9"  "Clean All" \
-            "10" "Back to Main Menu" \
-            3>&1 1>&2 2>&3) || return
+        _menu_prompt "System Cleanup" \
+            "Preview All" \
+            "APT Cache" \
+            "Snap Cache" \
+            "Log Files" \
+            "Temp Files" \
+            "Browser Cache" \
+            "User Data" \
+            "WSL Specific" \
+            "Clean All" \
+            "Back"
 
-        case "$choice" in
-            1)  cmd_clean_category "preview" ;;
-            2)  _menu_clean_confirm "apt" ;;
-            3)  _menu_clean_confirm "snap" ;;
-            4)  _menu_clean_confirm "logs" ;;
-            5)  _menu_clean_confirm "temp" ;;
-            6)  _menu_clean_confirm "browser" ;;
-            7)  _menu_clean_confirm "userdata" ;;
-            8)  _menu_clean_confirm "wsl" ;;
-            9)  _menu_clean_confirm "all" ;;
-            10) return ;;
+        case "$REPLY" in
+            1) cmd_clean_category "preview"; press_enter ;;
+            2) _menu_clean_confirm "apt"; press_enter ;;
+            3) _menu_clean_confirm "snap"; press_enter ;;
+            4) _menu_clean_confirm "logs"; press_enter ;;
+            5) _menu_clean_confirm "temp"; press_enter ;;
+            6) _menu_clean_confirm "browser"; press_enter ;;
+            7) _menu_clean_confirm "userdata"; press_enter ;;
+            8) _menu_clean_confirm "wsl"; press_enter ;;
+            9) _menu_clean_confirm "all"; press_enter ;;
+            0) return ;;
         esac
-        press_enter
     done
 }
 
 # Helper: preview then confirm for cleanup categories
 _menu_clean_confirm() {
     local category="$1"
-    # Preview first
+    # Preview first (dry run)
     local prev_dry_run="$DRY_RUN"
     DRY_RUN=true
     cmd_clean_category "$category"
     DRY_RUN="$prev_dry_run"
     echo ""
     # Ask to proceed
-    if whiptail --title "Confirm Cleanup" \
-        --yesno "Proceed with ${category} cleanup?" \
-        "$TERM_HEIGHT" "$TERM_WIDTH" 3>&1 1>&2 2>&3; then
+    if confirm "Proceed with ${category} cleanup?"; then
         cmd_clean_category "$category"
     else
         print_info "Cleanup cancelled."
     fi
 }
 
-# ── Disk Analysis Submenu ────────────────────────────────────────────
+# ── Disk Analysis Submenu ──────────────────────────────────────────
 menu_disk() {
     while true; do
-        local choice
-        choice=$(whiptail --title "Disk Analysis" \
-            --menu "Choose an analysis mode:" \
-            "$TERM_HEIGHT" "$TERM_WIDTH" "$MENU_HEIGHT" \
-            "1" "Summary" \
-            "2" "Tree View" \
-            "3" "Largest Files" \
-            "4" "Largest Folders" \
-            "5" "File Types" \
-            "6" "Old Files" \
-            "7" "Back to Main Menu" \
-            3>&1 1>&2 2>&3) || return
+        _menu_prompt "Disk Analysis" \
+            "Summary" \
+            "Tree View" \
+            "Largest Files" \
+            "Largest Folders" \
+            "File Types" \
+            "Old Files" \
+            "Back"
 
-        case "$choice" in
-            1) cmd_disk_mode "summary" ;;
-            2) cmd_disk_mode "tree" ;;
-            3) cmd_disk_mode "files" ;;
-            4) cmd_disk_mode "folders" ;;
-            5) cmd_disk_mode "types" ;;
-            6) cmd_disk_mode "old" ;;
-            7) return ;;
+        case "$REPLY" in
+            1) cmd_disk_mode "summary"; press_enter ;;
+            2) cmd_disk_mode "tree"; press_enter ;;
+            3) cmd_disk_mode "files"; press_enter ;;
+            4) cmd_disk_mode "folders"; press_enter ;;
+            5) cmd_disk_mode "types"; press_enter ;;
+            6) cmd_disk_mode "old"; press_enter ;;
+            0) return ;;
         esac
-        press_enter
     done
 }
 
-# ── Developer Cleanup Submenu ────────────────────────────────────────
+# ── Developer Cleanup Submenu ──────────────────────────────────────
 menu_dev() {
-    local path
-    path=$(whiptail --title "Developer Cleanup" \
-        --inputbox "Enter project path to scan:" \
-        "$TERM_HEIGHT" "$TERM_WIDTH" "$HOME" \
-        3>&1 1>&2 2>&3) || return
+    echo ""
+    echo -en "  ${CYAN}Enter project path to scan${NC} [${HOME}]: "
+    read -r path
+    path="${path:-$HOME}"
 
     # Dry-run preview first
     print_header "Developer Cleanup Preview"
     DRY_RUN=true cmd_dev_scan "$path"
     echo ""
 
-    if whiptail --title "Confirm Cleanup" \
-        --yesno "Proceed with cleanup of developer artifacts in:\n${path}?" \
-        "$TERM_HEIGHT" "$TERM_WIDTH" 3>&1 1>&2 2>&3; then
+    if confirm "Proceed with cleanup of developer artifacts in ${path}?"; then
         cmd_dev_scan "$path"
     else
         print_info "Cleanup cancelled."
@@ -170,81 +172,66 @@ menu_dev() {
     press_enter
 }
 
-# ── System Diagnostics Submenu ───────────────────────────────────────
+# ── System Diagnostics Submenu ─────────────────────────────────────
 menu_diagnose() {
     while true; do
-        local choice
-        choice=$(whiptail --title "System Diagnostics" \
-            --menu "Choose a diagnostic type:" \
-            "$TERM_HEIGHT" "$TERM_WIDTH" "$MENU_HEIGHT" \
-            "1" "All" \
-            "2" "Process" \
-            "3" "Memory" \
-            "4" "Service" \
-            "5" "WSL Resources" \
-            "6" "Back to Main Menu" \
-            3>&1 1>&2 2>&3) || return
+        _menu_prompt "System Diagnostics" \
+            "All" \
+            "Process" \
+            "Memory" \
+            "Service" \
+            "WSL Resources" \
+            "Back"
 
-        case "$choice" in
-            1) cmd_diagnose_type "all" ;;
-            2) cmd_diagnose_type "process" ;;
-            3) cmd_diagnose_type "memory" ;;
-            4) cmd_diagnose_type "service" ;;
-            5) cmd_diagnose_type "wsl" ;;
-            6) return ;;
+        case "$REPLY" in
+            1) cmd_diagnose_type "all"; press_enter ;;
+            2) cmd_diagnose_type "process"; press_enter ;;
+            3) cmd_diagnose_type "memory"; press_enter ;;
+            4) cmd_diagnose_type "service"; press_enter ;;
+            5) cmd_diagnose_type "wsl"; press_enter ;;
+            0) return ;;
         esac
-        press_enter
     done
 }
 
-# ── Package Manager Submenu ──────────────────────────────────────────
+# ── Package Manager Submenu ────────────────────────────────────────
 menu_packages() {
     while true; do
-        local choice
-        choice=$(whiptail --title "Package Manager" \
-            --menu "Choose an action:" \
-            "$TERM_HEIGHT" "$TERM_WIDTH" "$MENU_HEIGHT" \
-            "1" "Check Updates" \
-            "2" "Update All" \
-            "3" "Autoremove" \
-            "4" "Clean Cache" \
-            "5" "List Installed" \
-            "6" "Back to Main Menu" \
-            3>&1 1>&2 2>&3) || return
+        _menu_prompt "Package Manager" \
+            "Check Updates" \
+            "Update All" \
+            "Autoremove" \
+            "Clean Cache" \
+            "List Installed" \
+            "Back"
 
-        case "$choice" in
-            1) cmd_packages_action "check" ;;
-            2) cmd_packages_action "update" ;;
-            3) cmd_packages_action "autoremove" ;;
-            4) cmd_packages_action "clean" ;;
-            5) cmd_packages_action "list" ;;
-            6) return ;;
+        case "$REPLY" in
+            1) cmd_packages_action "check"; press_enter ;;
+            2) cmd_packages_action "update"; press_enter ;;
+            3) cmd_packages_action "autoremove"; press_enter ;;
+            4) cmd_packages_action "clean"; press_enter ;;
+            5) cmd_packages_action "list"; press_enter ;;
+            0) return ;;
         esac
-        press_enter
     done
 }
 
-# ── WSL Tools Submenu ────────────────────────────────────────────────
+# ── WSL Tools Submenu ──────────────────────────────────────────────
 menu_wsl() {
     while true; do
-        local choice
-        choice=$(whiptail --title "WSL Tools" \
-            --menu "Choose an action:" \
-            "$TERM_HEIGHT" "$TERM_WIDTH" "$MENU_HEIGHT" \
-            "1" "WSL Info" \
-            "2" "Memory Check" \
-            "3" "Disk Compact Guide" \
-            "4" "Interop Status" \
-            "5" "Back to Main Menu" \
-            3>&1 1>&2 2>&3) || return
+        _menu_prompt "WSL Tools" \
+            "WSL Info" \
+            "Memory Check" \
+            "Disk Compact Guide" \
+            "Interop Status" \
+            "Back"
 
-        case "$choice" in
-            1) cmd_wsl_action "info" ;;
-            2) cmd_wsl_action "memory" ;;
-            3) cmd_wsl_action "compact" ;;
-            4) cmd_wsl_action "interop" ;;
-            5) return ;;
+        case "$REPLY" in
+            1) cmd_wsl_action "info"; press_enter ;;
+            2) cmd_wsl_action "memory"; press_enter ;;
+            3) cmd_wsl_action "compact"; press_enter ;;
+            4) cmd_wsl_action "interop"; press_enter ;;
+            0) return ;;
         esac
-        press_enter
     done
 }

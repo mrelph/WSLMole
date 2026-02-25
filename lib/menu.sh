@@ -41,8 +41,9 @@ run_interactive_menu() {
             "4" "System Diagnostics" \
             "5" "Package Manager" \
             "6" "WSL Tools" \
-            "7" "Quick Scan" \
-            "8" "Exit" \
+            "7" "Quick Health Scan" \
+            "8" "Auto-Fix" \
+            "9" "Exit" \
             3>&1 1>&2 2>&3) || break
 
         case "$choice" in
@@ -53,7 +54,8 @@ run_interactive_menu() {
             5) menu_packages ;;
             6) menu_wsl ;;
             7) run_quick_scan; press_enter ;;
-            8) break ;;
+            8) cmd_fix; press_enter ;;
+            9) break ;;
         esac
     done
 

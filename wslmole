@@ -35,29 +35,143 @@ LOGO
 # ── Usage ───────────────────────────────────────────────────────────
 show_usage() {
     show_logo
-    cat << 'USAGE'
-Usage: wslmole [command] [options]
+    echo -e "${BOLD}Usage:${NC} wslmole [command] [options]"
+    echo ""
+    echo -e "${BOLD}Commands:${NC}"
+    echo -e "  ${BOLD}clean${NC}              System cleanup (temp files, caches, logs)"
+    echo -e "  ${BOLD}disk${NC} [path]        Disk usage analysis"
+    echo -e "  ${BOLD}dev${NC} [path]         Developer artifact cleanup"
+    echo -e "  ${BOLD}diagnose${NC} [type]    System diagnostics"
+    echo -e "  ${BOLD}packages${NC} [action]  Package manager (apt + snap)"
+    echo -e "  ${BOLD}wsl${NC} [action]       WSL-specific tools"
+    echo -e "  ${BOLD}fix${NC}                Auto-fix based on health scan"
+    echo -e "  ${BOLD}help${NC} [command]     Show help for a command"
+    echo ""
+    echo -e "${BOLD}Options:${NC}"
+    echo -e "  ${BOLD}-i${NC}, ${BOLD}--interactive${NC}  Launch interactive TUI menu"
+    echo -e "  ${BOLD}-q${NC}, ${BOLD}--quick${NC}        Run quick system scan"
+    echo -e "  ${BOLD}-v${NC}, ${BOLD}--verbose${NC}      Enable verbose logging"
+    echo -e "  ${BOLD}--format${NC} FORMAT    Output format: text (default) or json"
+    echo -e "  ${BOLD}--yes${NC}              Skip confirmation prompts"
+    echo -e "  ${BOLD}-h${NC}, ${BOLD}--help${NC}         Show this help message"
+    echo -e "  ${BOLD}--version${NC}          Show version"
+    echo ""
+    echo -e "Run ${BOLD}wslmole${NC} with no arguments for a quick health scan."
+    echo -e "Run ${CYAN}wslmole help <command>${NC} for command-specific options."
+}
 
-Commands:
-  clean              System cleanup (temp files, caches, logs)
-  disk [path]        Disk usage analysis
-  dev [path]         Developer artifact cleanup
-  diagnose [type]    System diagnostics
-  packages [action]  Package manager (apt + snap)
-  wsl [action]       WSL-specific tools
-  help [command]     Show help for a command
+# ── Fix Command ────────────────────────────────────────────────────
+cmd_fix() {
+    local dry_run_flag=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -n|--dry-run) DRY_RUN=true; shift ;;
+            -h|--help)
+                echo -e "${BOLD}Usage:${NC} wslmole fix [options]"
+                echo ""
+                echo "  Run recommended cleanup actions based on system health."
+                echo "  Equivalent to running quick scan + acting on recommendations."
+                echo ""
+                echo -e "${BOLD}Options:${NC}"
+                echo "  -n, --dry-run    Preview what would be done"
+                echo "  -h, --help       Show this help"
+                return 0
+                ;;
+            *) shift ;;
+        esac
+    done
 
-Options:
-  -i, --interactive  Launch interactive TUI menu
-  -q, --quick        Run quick system scan
-  -v, --verbose      Enable verbose logging
-  --format FORMAT    Output format: text (default) or json
-  --yes              Skip confirmation prompts
-  -h, --help         Show this help message
-  --version          Show version
+    print_header "WSLMole Auto-Fix"
 
-Run 'wslmole <command> --help' for command-specific options.
-USAGE
+    if [[ "$DRY_RUN" == true ]]; then
+        print_warning "DRY RUN mode - no changes will be made"
+        echo ""
+    fi
+
+    local actions_taken=0
+
+    # Check disk usage
+    local disk_pct=0
+    disk_pct=$(df / 2>/dev/null | awk 'NR==2 {gsub(/%/,"",$5); print $5}')
+    disk_pct=${disk_pct:-0}
+
+    if [[ $disk_pct -ge 75 ]]; then
+        print_info "Disk usage is ${disk_pct}% - running cleanup..."
+        echo ""
+        # Run high-value cleanup categories (not browser/user - low value in WSL)
+        for cat in logs tmp wsl; do
+            cmd_clean_category "$cat"
+        done
+        actions_taken=$((actions_taken + 1))
+    fi
+
+    # Check for upgradable packages
+    local upgradable=0
+    if command -v apt-get &>/dev/null; then
+        upgradable=$(apt list --upgradable 2>/dev/null | grep -c 'upgradable' || true)
+        upgradable=${upgradable:-0}
+    fi
+
+    if [[ $upgradable -gt 10 ]]; then
+        print_info "${upgradable} packages can be upgraded"
+        print_info "Run ${BOLD}sudo apt update && sudo apt upgrade${NC} to update"
+        echo ""
+        actions_taken=$((actions_taken + 1))
+    fi
+
+    # Check for failed services
+    if command -v systemctl &>/dev/null && systemctl is-system-running &>/dev/null 2>&1; then
+        local failed
+        failed=$(systemctl --no-pager --no-legend list-units --state=failed 2>/dev/null | wc -l)
+        if [[ $failed -gt 0 ]]; then
+            print_warning "${failed} failed service(s) detected:"
+            systemctl --no-pager --no-legend list-units --state=failed 2>/dev/null | while read -r line; do
+                local unit_name
+                unit_name=$(echo "$line" | awk '{print $1}')
+                print_item "$unit_name"
+            done
+            echo ""
+            actions_taken=$((actions_taken + 1))
+        fi
+    fi
+
+    # Dev artifact scan in home directory
+    print_info "Scanning for developer artifacts in ~/..."
+    local dev_artifacts
+    dev_artifacts=$(find "$HOME" -maxdepth 4 -type d \( -name node_modules -o -name target -o -name __pycache__ -o -name .venv -o -name venv \) -prune 2>/dev/null | head -20)
+    if [[ -n "$dev_artifacts" ]]; then
+        local count
+        count=$(echo "$dev_artifacts" | wc -l)
+        local total_bytes=0
+        while IFS= read -r dir; do
+            local sz
+            sz=$(du -sb "$dir" 2>/dev/null | cut -f1 || echo 0)
+            total_bytes=$((total_bytes + sz))
+        done <<< "$dev_artifacts"
+        print_warning "Found ${count} developer artifact(s) (~$(format_size "$total_bytes"))"
+        print_info "Run ${BOLD}wslmole dev ~/${NC} to review and clean them"
+        echo ""
+        actions_taken=$((actions_taken + 1))
+    fi
+
+    # WSL config check
+    if is_wsl; then
+        local win_user
+        win_user=$(cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r\n' || true)
+        if [[ -n "$win_user" ]] && [[ ! -f "/mnt/c/Users/${win_user}/.wslconfig" ]]; then
+            print_warning "No .wslconfig found - WSL2 may use excessive memory"
+            print_info "Run ${BOLD}wslmole wsl info${NC} for a template"
+            echo ""
+            actions_taken=$((actions_taken + 1))
+        fi
+    fi
+
+    if [[ $actions_taken -eq 0 ]]; then
+        print_success "System looks healthy - no fixes needed!"
+    else
+        echo ""
+        print_info "Completed ${actions_taken} check(s). Run ${BOLD}wslmole -q${NC} for full health report."
+    fi
 }
 
 # ── Main CLI Parser ─────────────────────────────────────────────────
@@ -130,9 +244,9 @@ main() {
 
     init_logging
 
-    # No command = interactive mode
+    # No command = quick scan (best first-run experience)
     if [[ -z "$command" ]]; then
-        run_interactive_menu
+        run_quick_scan
         exit 0
     fi
 
@@ -144,6 +258,7 @@ main() {
                     clean) cmd_clean_help ;; disk) cmd_disk_help ;;
                     dev) cmd_dev_help ;; diagnose) cmd_diagnose_help ;;
                     packages) cmd_packages_help ;; wsl) cmd_wsl_help ;;
+                    fix) cmd_fix --help ;;
                     *) print_error "Unknown command: ${args[0]}"; show_usage; exit 1 ;;
                 esac
             else
@@ -168,6 +283,9 @@ main() {
             ;;
         wsl)
             cmd_wsl "${args[@]+"${args[@]}"}" || exit_code=$?
+            ;;
+        fix)
+            cmd_fix "${args[@]+"${args[@]}"}" || exit_code=$?
             ;;
         *)
             print_error "Unknown command: $command"

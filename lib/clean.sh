@@ -7,9 +7,16 @@
 # All valid cleanup categories
 CLEAN_CATEGORIES=(apt snap logs tmp browser user wsl)
 
+# Default categories (high-value for WSL users)
+CLEAN_DEFAULT_CATEGORIES=(apt snap logs tmp wsl)
+
 # ── CLI Handler ────────────────────────────────────────────────────
 cmd_clean() {
     local categories=()
+
+    # Track total bytes freed
+    local total_freed_before=0
+    local total_freed_after=0
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -41,9 +48,9 @@ cmd_clean() {
         esac
     done
 
-    # Default categories if none specified
+    # Default categories if none specified (high-value only; use --all for everything)
     if [[ ${#categories[@]} -eq 0 ]]; then
-        categories=("${CLEAN_CATEGORIES[@]}")
+        categories=("${CLEAN_DEFAULT_CATEGORIES[@]}")
     fi
 
     # Expand "all" to all categories
@@ -65,6 +72,21 @@ cmd_clean() {
         echo ""
     fi
 
+    # Detect sudo availability upfront
+    local has_root=false
+    if [[ $EUID -eq 0 ]]; then
+        has_root=true
+    fi
+
+    if [[ "$has_root" == false ]]; then
+        print_info "Running without root - some operations will be skipped"
+        print_info "Run with ${BOLD}sudo wslmole clean${NC} for full cleanup"
+        echo ""
+    fi
+
+    # Capture before sizes for summary
+    total_freed_before=$(( $(get_size_bytes /var/cache/apt/archives 2>/dev/null || echo 0) + $(get_size_bytes /tmp 2>/dev/null || echo 0) + $(get_size_bytes "$HOME/.cache" 2>/dev/null || echo 0) ))
+
     local rc=0
     for cat in "${categories[@]}"; do
         cmd_clean_category "$cat" || rc=1
@@ -74,40 +96,52 @@ cmd_clean() {
     if [[ "${FORMAT:-text}" == "json" ]]; then
         json_output "$(to_json_kv "status" "complete" "dry_run" "$DRY_RUN" "categories" "${categories[*]}")"
     else
-        print_success "Cleanup scan complete."
+        # Summary with total freed
+        if [[ "$DRY_RUN" != true ]]; then
+            total_freed_after=$(( $(get_size_bytes /var/cache/apt/archives 2>/dev/null || echo 0) + $(get_size_bytes /tmp 2>/dev/null || echo 0) + $(get_size_bytes "$HOME/.cache" 2>/dev/null || echo 0) ))
+            local freed=$((total_freed_before - total_freed_after))
+            if [[ $freed -gt 0 ]]; then
+                echo ""
+                echo -e "  ${GREEN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "  ${GREEN}${BOLD}  ✓ Freed $(format_size "$freed") of disk space${NC}"
+                echo -e "  ${GREEN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            else
+                print_success "Cleanup complete. System was already clean!"
+            fi
+        else
+            print_success "Dry run complete. Use without --dry-run to clean."
+        fi
     fi
     return $rc
 }
 
 # ── Help ───────────────────────────────────────────────────────────
 cmd_clean_help() {
-    cat << 'EOF'
-Usage: wslmole clean [options]
-
-Scan and clean system caches, logs, temp files, and more.
-
-Options:
-  -n, --dry-run          Preview what would be cleaned without deleting
-  -f, --force            Skip all confirmation prompts
-  -c, --category LIST    Comma-separated categories to clean
-  -h, --help             Show this help message
-
-Categories:
-  apt        APT package cache
-  snap       Disabled snap revisions
-  logs       Rotated log files and journal
-  tmp        Temp files (/tmp, /var/tmp, ~/.cache)
-  browser    Browser cache (Chrome, Chromium, Firefox, Edge)
-  user       User data (thumbnails, trash, recent files)
-  wsl        WSL-specific cleanup
-  all        All of the above
-
-Examples:
-  wslmole clean --dry-run              Preview all categories
-  wslmole clean -c apt,logs            Clean APT and logs only
-  wslmole clean -f -c tmp              Force-clean temp files
-  wslmole clean -n -c browser,user     Preview browser & user cleanup
-EOF
+    echo -e "${BOLD}Usage:${NC} wslmole clean [options]"
+    echo ""
+    echo "  Scan and clean system caches, logs, temp files, and more."
+    echo ""
+    echo -e "${BOLD}Options:${NC}"
+    echo -e "  ${BOLD}-n${NC}, ${BOLD}--dry-run${NC}          Preview what would be cleaned without deleting"
+    echo -e "  ${BOLD}-f${NC}, ${BOLD}--force${NC}            Skip all confirmation prompts"
+    echo -e "  ${BOLD}-c${NC}, ${BOLD}--category${NC} LIST    Comma-separated categories to clean"
+    echo -e "  ${BOLD}-h${NC}, ${BOLD}--help${NC}             Show this help message"
+    echo ""
+    echo -e "${BOLD}Categories:${NC}"
+    echo -e "  ${BOLD}apt${NC}        APT package cache"
+    echo -e "  ${BOLD}snap${NC}       Disabled snap revisions"
+    echo -e "  ${BOLD}logs${NC}       Rotated log files and journal"
+    echo -e "  ${BOLD}tmp${NC}        Temp files (/tmp, /var/tmp, ~/.cache)"
+    echo -e "  ${DIM}browser${NC}    Browser cache ${DIM}(opt-in, low value in WSL)${NC}"
+    echo -e "  ${DIM}user${NC}       User data ${DIM}(opt-in, low value in WSL)${NC}"
+    echo -e "  ${BOLD}wsl${NC}        WSL-specific cleanup"
+    echo -e "  ${BOLD}all${NC}        All of the above"
+    echo ""
+    echo -e "${BOLD}Examples:${NC}"
+    echo -e "  ${CYAN}wslmole clean --dry-run${NC}              Preview all categories"
+    echo -e "  ${CYAN}wslmole clean -c apt,logs${NC}            Clean APT and logs only"
+    echo -e "  ${CYAN}wslmole clean -f -c tmp${NC}              Force-clean temp files"
+    echo -e "  ${CYAN}wslmole clean -n -c browser,user${NC}     Preview browser & user cleanup"
 }
 
 # ── Category Dispatcher ────────────────────────────────────────────

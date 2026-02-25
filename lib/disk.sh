@@ -61,35 +61,33 @@ cmd_disk() {
 
 # ── Help ───────────────────────────────────────────────────────────
 cmd_disk_help() {
-    cat << 'EOF'
-Usage: wslmole disk [path] [options]
-
-Analyze disk usage with multiple view modes.
-
-Arguments:
-  path                 Directory to analyze (default: /)
-
-Options:
-  -m, --mode MODE      Analysis mode (default: summary)
-  -d, --depth N        Tree depth for tree mode (default: 3)
-  -n, --top N          Number of results to show (default: 10)
-  -h, --help           Show this help message
-
-Modes:
-  summary    Filesystem overview and top-level directory sizes
-  tree       Hierarchical directory tree sorted by size
-  files      Largest individual files
-  folders    Largest directories
-  types      Disk usage grouped by file extension
-  old        Files not modified in 90+ days
-
-Examples:
-  wslmole disk                           Summary of /
-  wslmole disk /home -m tree -d 4        Tree view of /home, 4 levels deep
-  wslmole disk ~ -m files -n 20          Top 20 largest files in home
-  wslmole disk /var -m types             File type breakdown of /var
-  wslmole disk ~ -m old -n 15            15 oldest large files in home
-EOF
+    echo -e "${BOLD}Usage:${NC} wslmole disk [path] [options]"
+    echo ""
+    echo "  Analyze disk usage with multiple view modes."
+    echo ""
+    echo -e "${BOLD}Arguments:${NC}"
+    echo "  path                 Directory to analyze (default: /)"
+    echo ""
+    echo -e "${BOLD}Options:${NC}"
+    echo -e "  ${BOLD}-m, --mode${NC} MODE      Analysis mode (default: summary)"
+    echo -e "  ${BOLD}-d, --depth${NC} N        Tree depth for tree mode (default: 3)"
+    echo -e "  ${BOLD}-n, --top${NC} N          Number of results to show (default: 10)"
+    echo -e "  ${BOLD}-h, --help${NC}           Show this help message"
+    echo ""
+    echo -e "${BOLD}Modes:${NC}"
+    echo -e "  ${BOLD}summary${NC}    Filesystem overview and top-level directory sizes"
+    echo -e "  ${BOLD}tree${NC}       Hierarchical directory tree sorted by size"
+    echo -e "  ${BOLD}files${NC}      Largest individual files"
+    echo -e "  ${BOLD}folders${NC}    Largest directories"
+    echo -e "  ${BOLD}types${NC}      Disk usage grouped by file extension"
+    echo -e "  ${BOLD}old${NC}        Files not modified in 90+ days"
+    echo ""
+    echo -e "${BOLD}Examples:${NC}"
+    echo -e "  ${CYAN}wslmole disk${NC}                           Summary of /"
+    echo -e "  ${CYAN}wslmole disk /home -m tree -d 4${NC}        Tree view of /home, 4 levels deep"
+    echo -e "  ${CYAN}wslmole disk ~ -m files -n 20${NC}          Top 20 largest files in home"
+    echo -e "  ${CYAN}wslmole disk /var -m types${NC}             File type breakdown of /var"
+    echo -e "  ${CYAN}wslmole disk ~ -m old -n 15${NC}            15 oldest large files in home"
 }
 
 # ── Mode Dispatcher ────────────────────────────────────────────────

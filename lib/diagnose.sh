@@ -34,31 +34,29 @@ cmd_diagnose() {
 
 # ── Help ───────────────────────────────────────────────────────────
 cmd_diagnose_help() {
-    cat << 'EOF'
-Usage: wslmole diagnose [type] [options]
-
-Run system diagnostics to inspect processes, memory, services, and WSL resources.
-
-Arguments:
-  type                 Diagnostic type to run (default: all)
-
-Options:
-  -h, --help           Show this help message
-
-Types:
-  all        Run all diagnostics (WSL only if running in WSL)
-  process    Top CPU and memory consuming processes
-  memory     Memory usage breakdown with visual progress bar
-  service    Systemd service status and resource usage
-  wsl        WSL-specific environment and resource info
-
-Examples:
-  wslmole diagnose                  Run all diagnostics
-  wslmole diagnose memory           Show memory breakdown
-  wslmole diagnose process          Show top processes
-  wslmole diagnose service          Show service status
-  wslmole diagnose wsl              Show WSL environment info
-EOF
+    echo -e "${BOLD}Usage:${NC} wslmole diagnose [type] [options]"
+    echo ""
+    echo "  Run system diagnostics to inspect processes, memory, services, and WSL resources."
+    echo ""
+    echo -e "${BOLD}Arguments:${NC}"
+    echo "  type                 Diagnostic type to run (default: all)"
+    echo ""
+    echo -e "${BOLD}Options:${NC}"
+    echo "  -h, --help           Show this help message"
+    echo ""
+    echo -e "${BOLD}Types:${NC}"
+    echo -e "  ${BOLD}all${NC}        Run all diagnostics (WSL only if running in WSL)"
+    echo -e "  ${BOLD}process${NC}    Top CPU and memory consuming processes"
+    echo -e "  ${BOLD}memory${NC}     Memory usage breakdown with visual progress bar"
+    echo -e "  ${BOLD}service${NC}    Systemd service status and resource usage"
+    echo -e "  ${BOLD}wsl${NC}        WSL-specific environment and resource info"
+    echo ""
+    echo -e "${BOLD}Examples:${NC}"
+    echo -e "  ${CYAN}wslmole diagnose${NC}                  Run all diagnostics"
+    echo -e "  ${CYAN}wslmole diagnose memory${NC}           Show memory breakdown"
+    echo -e "  ${CYAN}wslmole diagnose process${NC}          Show top processes"
+    echo -e "  ${CYAN}wslmole diagnose service${NC}          Show service status"
+    echo -e "  ${CYAN}wslmole diagnose wsl${NC}              Show WSL environment info"
 }
 
 # ── Type Dispatcher ────────────────────────────────────────────────

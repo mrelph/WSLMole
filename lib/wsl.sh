@@ -34,30 +34,28 @@ cmd_wsl() {
 
 # ── Help ───────────────────────────────────────────────────────────
 cmd_wsl_help() {
-    cat << 'EOF'
-Usage: wslmole wsl [action] [options]
-
-WSL-specific tools and information.
-
-Arguments:
-  action               WSL action to perform (default: info)
-
-Options:
-  -h, --help           Show this help message
-
-Actions:
-  info       WSL environment info, .wslconfig, /etc/wsl.conf
-  memory     Memory allocation, usage, and .wslconfig limits
-  compact    Guide to compacting the WSL2 virtual disk (vhdx)
-  interop    Windows/Linux interop status and PATH integration
-
-Examples:
-  wslmole wsl                       Show WSL info (default)
-  wslmole wsl info                  Show WSL environment info
-  wslmole wsl memory                Show memory allocation and limits
-  wslmole wsl compact               Show vhdx compact guide
-  wslmole wsl interop               Show interop status
-EOF
+    echo -e "${BOLD}Usage:${NC} wslmole wsl [action] [options]"
+    echo ""
+    echo "  WSL-specific tools and information."
+    echo ""
+    echo -e "${BOLD}Arguments:${NC}"
+    echo "  action               WSL action to perform (default: info)"
+    echo ""
+    echo -e "${BOLD}Options:${NC}"
+    echo -e "  ${BOLD}-h, --help${NC}           Show this help message"
+    echo ""
+    echo -e "${BOLD}Actions:${NC}"
+    echo -e "  ${BOLD}info${NC}       WSL environment info, .wslconfig, /etc/wsl.conf"
+    echo -e "  ${BOLD}memory${NC}     Memory allocation, usage, and .wslconfig limits"
+    echo -e "  ${BOLD}compact${NC}    Guide to compacting the WSL2 virtual disk (vhdx)"
+    echo -e "  ${BOLD}interop${NC}    Windows/Linux interop status and PATH integration"
+    echo ""
+    echo -e "${BOLD}Examples:${NC}"
+    echo -e "  ${CYAN}wslmole wsl${NC}                       Show WSL info (default)"
+    echo -e "  ${CYAN}wslmole wsl info${NC}                  Show WSL environment info"
+    echo -e "  ${CYAN}wslmole wsl memory${NC}                Show memory allocation and limits"
+    echo -e "  ${CYAN}wslmole wsl compact${NC}               Show vhdx compact guide"
+    echo -e "  ${CYAN}wslmole wsl interop${NC}               Show interop status"
 }
 
 # ── Action Dispatcher ─────────────────────────────────────────────

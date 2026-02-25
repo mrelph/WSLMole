@@ -8,13 +8,16 @@
 run_quick_scan() {
     # ASCII art mole (text mode only)
     if [[ "${FORMAT:-text}" != "json" ]]; then
-        echo -e "${CYAN}"
+        echo ""
+        echo -e "${CYAN}${BOLD}"
         cat << 'MOLE'
-      /\_/\
-     ( o.o )
-      > ^ <   WSLMole Quick Scan
-     /|   |\
-    (_|   |_)
+        ╭─────────────────────────╮
+        │      /\_/\              │
+        │     ( o.o )  WSLMole    │
+        │      > ^ <   Quick Scan │
+        │     /|   |\             │
+        │    (_|   |_)            │
+        ╰─────────────────────────╯
 MOLE
         echo -e "${NC}"
     fi
@@ -60,22 +63,31 @@ MOLE
 
     cleanable_total=$((apt_cache_bytes + old_logs_bytes + snap_bytes + tmp_bytes))
 
+    # ── System Info Gathering ─────────────────────────────────────
+
+    local mem_percentage=0
+    local mem_total_kb=0 mem_available_kb=0 mem_used_kb=0
+    if [[ -f /proc/meminfo ]]; then
+        mem_total_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+        mem_available_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+        if [[ $mem_total_kb -gt 0 ]]; then
+            mem_used_kb=$((mem_total_kb - mem_available_kb))
+            mem_percentage=$((mem_used_kb * 100 / mem_total_kb))
+        fi
+    fi
+
+    local disk_percentage=0
+    local disk_used="" disk_total="" disk_avail=""
+    disk_percentage=$(df / 2>/dev/null | awk 'NR==2 {gsub(/%/,"",$5); print $5}')
+    disk_percentage=${disk_percentage:-0}
+    disk_total=$(df -h / 2>/dev/null | awk 'NR==2 {print $2}')
+    disk_used=$(df -h / 2>/dev/null | awk 'NR==2 {print $3}')
+    disk_avail=$(df -h / 2>/dev/null | awk 'NR==2 {print $4}')
+
     # ── Health Score Calculation ──────────────────────────────────
 
     local health_score=100
     local -a recommendations=()
-
-    # Memory usage check
-    local mem_percentage=0
-    if [[ -f /proc/meminfo ]]; then
-        local mem_total_kb mem_available_kb
-        mem_total_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
-        mem_available_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
-        if [[ $mem_total_kb -gt 0 ]]; then
-            local mem_used_kb=$((mem_total_kb - mem_available_kb))
-            mem_percentage=$((mem_used_kb * 100 / mem_total_kb))
-        fi
-    fi
 
     if [[ $mem_percentage -ge 80 ]]; then
         health_score=$((health_score - 15))
@@ -85,11 +97,6 @@ MOLE
         recommendations+=("Memory usage is elevated (${mem_percentage}%) - consider freeing some memory")
     fi
 
-    # Disk usage check
-    local disk_percentage=0
-    disk_percentage=$(df / 2>/dev/null | awk 'NR==2 {gsub(/%/,"",$5); print $5}')
-    disk_percentage=${disk_percentage:-0}
-
     if [[ $disk_percentage -ge 90 ]]; then
         health_score=$((health_score - 20))
         recommendations+=("Disk usage is critical (${disk_percentage}%) - run 'wslmole clean' to free space")
@@ -98,7 +105,6 @@ MOLE
         recommendations+=("Disk usage is high (${disk_percentage}%) - consider running 'wslmole clean'")
     fi
 
-    # Failed systemd services
     local failed_count=0
     if command -v systemctl &>/dev/null && systemctl is-system-running &>/dev/null 2>&1; then
         failed_count=$(systemctl --no-pager --no-legend list-units --state=failed 2>/dev/null | wc -l)
@@ -109,9 +115,8 @@ MOLE
         fi
     fi
 
-    # .wslconfig check (WSL only)
+    local has_wslconfig=false
     if is_wsl; then
-        local has_wslconfig=false
         local win_username
         win_username=$(cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r\n' || true)
         if [[ -n "$win_username" ]]; then
@@ -126,14 +131,13 @@ MOLE
         fi
     fi
 
-    # Upgradable packages check
     local upgradable_count=0
     if command -v apt-get &>/dev/null; then
         upgradable_count=$(apt list --upgradable 2>/dev/null | grep -c 'upgradable' || true)
         upgradable_count=${upgradable_count:-0}
         if [[ $upgradable_count -gt 10 ]]; then
             health_score=$((health_score - 5))
-            recommendations+=("${upgradable_count} packages can be upgraded - run 'wslmole packages upgrade'")
+            recommendations+=("${upgradable_count} packages can be upgraded - run 'wslmole packages update'")
         fi
     fi
 
@@ -172,51 +176,129 @@ MOLE
         done
         rec_json+="]"
 
-        json_output "{\"health_score\":${health_score},\"grade\":\"${grade}\",\"cleanable\":{\"apt_cache\":${apt_cache_bytes},\"old_logs\":${old_logs_bytes},\"snap\":${snap_bytes},\"tmp\":${tmp_bytes},\"total\":${cleanable_total}},\"recommendations\":${rec_json}}"
+        json_output "{\"health_score\":${health_score},\"grade\":\"${grade}\",\"memory_percent\":${mem_percentage},\"disk_percent\":${disk_percentage},\"cleanable\":{\"apt_cache\":${apt_cache_bytes},\"old_logs\":${old_logs_bytes},\"snap\":${snap_bytes},\"tmp\":${tmp_bytes},\"total\":${cleanable_total}},\"recommendations\":${rec_json}}"
         return 0
     fi
 
-    print_header "Health Score"
-    echo -e "    ${score_color}${BOLD}${health_score}/100${NC}  ${score_color}${grade}${NC}"
+    # ── Visual Health Score ───────────────────────────────────────
+
+    echo -e "  ${BOLD}HEALTH SCORE${NC}"
     echo ""
 
-    # Cleanable space breakdown (only non-zero items)
-    print_header "Cleanable Space"
+    # Large score display with visual bar
+    local bar_width=40
+    local filled=$((health_score * bar_width / 100))
+    local empty=$((bar_width - filled))
+    local bar_filled="" bar_empty=""
+    local i
+    for ((i = 0; i < filled; i++)); do bar_filled+="█"; done
+    for ((i = 0; i < empty; i++)); do bar_empty+="░"; done
+
+    echo -e "    ${score_color}${BOLD}${health_score}${NC}/100  ${score_color}${grade}${NC}"
+    echo -e "    ${score_color}${bar_filled}${NC}${DIM}${bar_empty}${NC}"
+    echo ""
+
+    # ── Two-Column System Overview ────────────────────────────────
+
+    echo -e "  ${BOLD}SYSTEM OVERVIEW${NC}"
+    echo -e "  ${DIM}─────────────────────────────────────────────${NC}"
+    echo ""
+
+    # Memory bar
+    local mem_bar_w=20
+    local mem_filled=$((mem_percentage * mem_bar_w / 100))
+    local mem_empty=$((mem_bar_w - mem_filled))
+    local mem_bar_f="" mem_bar_e=""
+    local mem_color
+    if [[ $mem_percentage -lt 60 ]]; then mem_color="$GREEN"
+    elif [[ $mem_percentage -le 80 ]]; then mem_color="$YELLOW"
+    else mem_color="$RED"; fi
+    for ((i = 0; i < mem_filled; i++)); do mem_bar_f+="█"; done
+    for ((i = 0; i < mem_empty; i++)); do mem_bar_e+="░"; done
+
+    # Disk bar
+    local disk_bar_w=20
+    local disk_filled=$((disk_percentage * disk_bar_w / 100))
+    local disk_empty=$((disk_bar_w - disk_filled))
+    local disk_bar_f="" disk_bar_e=""
+    local disk_color
+    if [[ $disk_percentage -lt 75 ]]; then disk_color="$GREEN"
+    elif [[ $disk_percentage -le 90 ]]; then disk_color="$YELLOW"
+    else disk_color="$RED"; fi
+    for ((i = 0; i < disk_filled; i++)); do disk_bar_f+="█"; done
+    for ((i = 0; i < disk_empty; i++)); do disk_bar_e+="░"; done
+
+    printf "    ${BOLD}%-12s${NC} ${mem_color}%s${NC}${DIM}%s${NC}  ${BOLD}%d%%${NC}  %s / %s\n" \
+        "Memory" "$mem_bar_f" "$mem_bar_e" "$mem_percentage" \
+        "$(format_size $((mem_used_kb * 1024)))" "$(format_size $((mem_total_kb * 1024)))"
+    printf "    ${BOLD}%-12s${NC} ${disk_color}%s${NC}${DIM}%s${NC}  ${BOLD}%d%%${NC}  %s / %s\n" \
+        "Disk" "$disk_bar_f" "$disk_bar_e" "$disk_percentage" \
+        "${disk_used:-?}" "${disk_total:-?}"
+
+    echo ""
+
+    # ── Cleanable Space ───────────────────────────────────────────
+
+    echo -e "  ${BOLD}CLEANABLE SPACE${NC}"
+    echo -e "  ${DIM}─────────────────────────────────────────────${NC}"
+    echo ""
 
     local has_cleanable=false
-    if [[ $apt_cache_bytes -gt 0 ]]; then
-        print_item "APT cache: $(format_size "$apt_cache_bytes")"
-        has_cleanable=true
-    fi
-    if [[ $old_logs_bytes -gt 0 ]]; then
-        print_item "Old logs: $(format_size "$old_logs_bytes")"
-        has_cleanable=true
-    fi
+
+    # Show items with proportional bar indicators
+    _show_cleanable_item() {
+        local label="$1" bytes="$2"
+        if [[ $bytes -gt 0 ]]; then
+            has_cleanable=true
+            local item_bar=""
+            # Mini bar proportional to size (max 10 chars for 1GB+)
+            local bar_len=1
+            if [[ $bytes -ge 1073741824 ]]; then bar_len=10
+            elif [[ $bytes -ge 524288000 ]]; then bar_len=8
+            elif [[ $bytes -ge 104857600 ]]; then bar_len=6
+            elif [[ $bytes -ge 10485760 ]]; then bar_len=4
+            elif [[ $bytes -ge 1048576 ]]; then bar_len=2
+            fi
+            for ((i = 0; i < bar_len; i++)); do item_bar+="▪"; done
+
+            printf "    ${YELLOW}%-8s${NC} %-24s %s\n" "$item_bar" "$label" "$(format_size "$bytes")"
+        fi
+    }
+
+    _show_cleanable_item "APT cache" "$apt_cache_bytes"
+    _show_cleanable_item "Old logs" "$old_logs_bytes"
     if [[ $snap_bytes -gt 0 ]]; then
-        print_item "Snap disabled revisions ($snap_disabled_count): $(format_size "$snap_bytes")"
-        has_cleanable=true
+        _show_cleanable_item "Snap ($snap_disabled_count revs)" "$snap_bytes"
     fi
-    if [[ $tmp_bytes -gt 0 ]]; then
-        print_item "Tmp files: $(format_size "$tmp_bytes")"
-        has_cleanable=true
-    fi
+    _show_cleanable_item "Tmp files" "$tmp_bytes"
+
     if [[ "$has_cleanable" == true ]]; then
         echo ""
-        print_info "Total cleanable: ${BOLD}$(format_size "$cleanable_total")${NC}"
+        echo -e "    ${BOLD}Total reclaimable:  $(format_size "$cleanable_total")${NC}"
     else
         print_success "System is clean - nothing to reclaim"
     fi
 
-    # Recommendations (only if there are any)
+    echo ""
+
+    # ── Recommendations ───────────────────────────────────────────
+
     if [[ ${#recommendations[@]} -gt 0 ]]; then
-        print_header "Recommendations"
+        echo -e "  ${BOLD}RECOMMENDATIONS${NC}"
+        echo -e "  ${DIM}─────────────────────────────────────────────${NC}"
+        echo ""
         for rec in "${recommendations[@]}"; do
-            print_warning "$rec"
+            echo -e "    ${YELLOW}▸${NC} $rec"
         done
+        echo ""
     fi
 
-    echo ""
-    echo -e "  Run ${BOLD}wslmole${NC} for full interactive menu"
-    echo -e "  Run ${BOLD}wslmole clean --dry-run${NC} to preview cleanup"
+    # ── Footer ────────────────────────────────────────────────────
+
+    echo -e "  ${DIM}─────────────────────────────────────────────${NC}"
+    echo -e "  ${BOLD}wslmole fix${NC}         Auto-fix recommendations"
+    echo -e "  ${BOLD}wslmole clean${NC}       Full system cleanup"
+    echo -e "  ${BOLD}wslmole -i${NC}          Interactive menu"
+    echo -e "  ${DIM}─────────────────────────────────────────────${NC}"
     echo ""
 }

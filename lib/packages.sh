@@ -39,32 +39,30 @@ cmd_packages() {
 
 # ── Help ───────────────────────────────────────────────────────────
 cmd_packages_help() {
-    cat << 'EOF'
-Usage: wslmole packages [action] [options]
-
-Manage system packages via apt and snap.
-
-Arguments:
-  action               Package action to perform (default: audit)
-
-Options:
-  -h, --help           Show this help message
-
-Actions:
-  audit      Check for available apt and snap updates
-  update     Update all apt and snap packages
-  autoremove Remove unused apt dependencies
-  clean      Clean apt cache and report snap old revisions
-  list       List installed apt and snap packages
-
-Examples:
-  wslmole packages                    Check for updates (audit)
-  wslmole packages audit              Check for available updates
-  wslmole packages update             Update all packages
-  wslmole packages autoremove         Remove unused dependencies
-  wslmole packages clean              Clean package caches
-  wslmole packages list               List installed packages
-EOF
+    echo -e "${BOLD}Usage:${NC} wslmole packages [action] [options]"
+    echo ""
+    echo "  Manage system packages via apt and snap."
+    echo ""
+    echo -e "${BOLD}Arguments:${NC}"
+    echo "  action               Package action to perform (default: audit)"
+    echo ""
+    echo -e "${BOLD}Options:${NC}"
+    echo -e "  ${BOLD}-h, --help${NC}           Show this help message"
+    echo ""
+    echo -e "${BOLD}Actions:${NC}"
+    echo -e "  ${BOLD}audit${NC}      Check for available apt and snap updates"
+    echo -e "  ${BOLD}update${NC}     Update all apt and snap packages"
+    echo -e "  ${BOLD}autoremove${NC} Remove unused apt dependencies"
+    echo -e "  ${BOLD}clean${NC}      Clean apt cache and report snap old revisions"
+    echo -e "  ${BOLD}list${NC}       List installed apt and snap packages"
+    echo ""
+    echo -e "${BOLD}Examples:${NC}"
+    echo -e "  ${CYAN}wslmole packages${NC}                    Check for updates (audit)"
+    echo -e "  ${CYAN}wslmole packages audit${NC}              Check for available updates"
+    echo -e "  ${CYAN}wslmole packages update${NC}             Update all packages"
+    echo -e "  ${CYAN}wslmole packages autoremove${NC}         Remove unused dependencies"
+    echo -e "  ${CYAN}wslmole packages clean${NC}              Clean package caches"
+    echo -e "  ${CYAN}wslmole packages list${NC}               List installed packages"
 }
 
 # ── Action Dispatcher ──────────────────────────────────────────────

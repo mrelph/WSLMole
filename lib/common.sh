@@ -81,6 +81,10 @@ print_item() {
     echo -e "  ${DIM}•${NC} $1"
 }
 
+print_section() {
+    echo -e "\n${BOLD}$1${NC}"
+}
+
 # ── Progress Display ────────────────────────────────────────────────
 show_progress() {
     local pid=$1
@@ -197,6 +201,10 @@ is_protected_path() {
 
 is_root() {
     [[ $EUID -eq 0 ]]
+}
+
+has_sudo() {
+    [[ $EUID -eq 0 ]] || sudo -n true 2>/dev/null
 }
 
 require_root_or_skip() {

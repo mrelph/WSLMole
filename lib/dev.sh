@@ -81,45 +81,43 @@ cmd_dev() {
 
 # ── Help ───────────────────────────────────────────────────────────
 cmd_dev_help() {
-    cat << 'EOF'
-Usage: wslmole dev [path] [options]
-
-Scan for and clean developer build artifacts (node_modules, target, etc.).
-
-Arguments:
-  path                   Directory to scan (default: .)
-
-Options:
-  -n, --dry-run          Preview what would be cleaned without deleting
-  -f, --force            Skip all confirmation prompts
-  -t, --types LIST       Comma-separated artifact types to target
-  --older-than DAYS      Only target artifacts older than DAYS days
-  -h, --help             Show this help message
-
-Artifact Types:
-  node_modules   Node.js dependencies
-  target         Rust/Java build output
-  __pycache__    Python bytecode cache
-  .gradle        Gradle build cache
-  venv, .venv    Python virtual environments
-  build          Generic build output
-  dist           Distribution output
-  .next          Next.js build cache
-  .nuxt          Nuxt.js build cache
-  .cache         Generic cache directory
-  vendor         PHP/Go vendored dependencies
-  .tox           Python tox test environments
-  .pytest_cache  Pytest cache
-  coverage       Code coverage reports
-  .nyc_output    NYC/Istanbul coverage output
-  all            All of the above
-
-Examples:
-  wslmole dev ~/projects --dry-run           Preview all artifacts
-  wslmole dev . -t node_modules,target       Clean specific types only
-  wslmole dev ~/code --older-than 30 -n      Preview artifacts older than 30 days
-  wslmole dev ~/work -f -t all               Force-clean all artifact types
-EOF
+    echo -e "${BOLD}Usage:${NC} wslmole dev [path] [options]"
+    echo ""
+    echo "  Scan for and clean developer build artifacts (node_modules, target, etc.)."
+    echo ""
+    echo -e "${BOLD}Arguments:${NC}"
+    echo "  path                   Directory to scan (default: .)"
+    echo ""
+    echo -e "${BOLD}Options:${NC}"
+    echo -e "  ${BOLD}-n, --dry-run${NC}          Preview what would be cleaned without deleting"
+    echo -e "  ${BOLD}-f, --force${NC}            Skip all confirmation prompts"
+    echo -e "  ${BOLD}-t, --types${NC} LIST       Comma-separated artifact types to target"
+    echo -e "  ${BOLD}--older-than${NC} DAYS      Only target artifacts older than DAYS days"
+    echo -e "  ${BOLD}-h, --help${NC}             Show this help message"
+    echo ""
+    echo -e "${BOLD}Artifact Types:${NC}"
+    echo -e "  ${BOLD}node_modules${NC}   Node.js dependencies"
+    echo -e "  ${BOLD}target${NC}         Rust/Java build output"
+    echo -e "  ${BOLD}__pycache__${NC}    Python bytecode cache"
+    echo -e "  ${BOLD}.gradle${NC}        Gradle build cache"
+    echo -e "  ${BOLD}venv, .venv${NC}    Python virtual environments"
+    echo -e "  ${BOLD}build${NC}          Generic build output"
+    echo -e "  ${BOLD}dist${NC}           Distribution output"
+    echo -e "  ${BOLD}.next${NC}          Next.js build cache"
+    echo -e "  ${BOLD}.nuxt${NC}          Nuxt.js build cache"
+    echo -e "  ${BOLD}.cache${NC}         Generic cache directory"
+    echo -e "  ${BOLD}vendor${NC}         PHP/Go vendored dependencies"
+    echo -e "  ${BOLD}.tox${NC}           Python tox test environments"
+    echo -e "  ${BOLD}.pytest_cache${NC}  Pytest cache"
+    echo -e "  ${BOLD}coverage${NC}       Code coverage reports"
+    echo -e "  ${BOLD}.nyc_output${NC}    NYC/Istanbul coverage output"
+    echo -e "  ${BOLD}all${NC}            All of the above"
+    echo ""
+    echo -e "${BOLD}Examples:${NC}"
+    echo -e "  ${CYAN}wslmole dev ~/projects --dry-run${NC}           Preview all artifacts"
+    echo -e "  ${CYAN}wslmole dev . -t node_modules,target${NC}       Clean specific types only"
+    echo -e "  ${CYAN}wslmole dev ~/code --older-than 30 -n${NC}      Preview artifacts older than 30 days"
+    echo -e "  ${CYAN}wslmole dev ~/work -f -t all${NC}               Force-clean all artifact types"
 }
 
 # ── Scanner ────────────────────────────────────────────────────────

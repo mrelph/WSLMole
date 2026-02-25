@@ -95,6 +95,28 @@ else
     pass "--format invalid exits non-zero"
 fi
 
+# Test 11: fix --help exits 0
+if "$WSLMOLE" fix --help >/dev/null 2>&1; then
+    pass "fix --help exits 0"
+else
+    fail "fix --help exits 0"
+fi
+
+# Test 12: help output mentions fix command
+output=$("$WSLMOLE" --help 2>&1)
+if echo "$output" | grep -q "fix"; then
+    pass "--help mentions fix command"
+else
+    fail "--help mentions fix command"
+fi
+
+# Test 13: help output mentions interactive flag
+if echo "$output" | grep -q "\-i"; then
+    pass "--help mentions -i flag"
+else
+    fail "--help mentions -i flag"
+fi
+
 echo ""
 echo "========================="
 echo "Tests run: $TESTS_RUN"

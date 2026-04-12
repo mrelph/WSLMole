@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ master, main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ master, main ]
 
 jobs:
   shellcheck:
@@ -28,7 +28,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y whiptail bc
+          sudo apt-get install -y bc
       
       - name: Run test suite
         run: |
@@ -47,7 +47,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y whiptail bc
+          sudo apt-get install -y bc
       
       - name: Test CLI commands
         run: |

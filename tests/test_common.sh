@@ -59,6 +59,16 @@ test_format_size() {
     
     result=$(format_size 2147483648)
     assert_equals "2.0 GB" "$result" "format_size: gigabytes"
+
+    local size_test_file="/tmp/wslmole_common_size_$$"
+    printf 'x' > "$size_test_file"
+    result=$(get_size_bytes "$size_test_file")
+    rm -f "$size_test_file"
+    if [[ "$result" =~ ^[0-9]+$ ]]; then
+        assert_true "get_size_bytes: emits one numeric value"
+    else
+        assert_false "get_size_bytes: should emit one numeric value"
+    fi
 }
 
 test_is_protected_path() {
@@ -66,6 +76,14 @@ test_is_protected_path() {
         assert_true "is_protected_path: /bin is protected"
     else
         assert_false "is_protected_path: /bin should be protected"
+    fi
+
+    local resolved_bin
+    resolved_bin=$(realpath /bin 2>/dev/null || echo /bin)
+    if is_protected_path "$resolved_bin"; then
+        assert_true "is_protected_path: resolved /bin is protected"
+    else
+        assert_false "is_protected_path: resolved /bin should be protected"
     fi
     
     if is_protected_path "/tmp/test"; then

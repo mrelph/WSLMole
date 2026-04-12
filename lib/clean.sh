@@ -40,6 +40,10 @@ cmd_clean() {
                 cmd_clean_help
                 return 0
                 ;;
+            all|apt|snap|logs|tmp|temp|browser|user|userdata|wsl)
+                categories+=("$1")
+                shift
+                ;;
             *)
                 print_error "Unknown option: $1"
                 cmd_clean_help
@@ -186,6 +190,7 @@ cmd_clean_category() {
             ;;
         *)
             print_error "Unknown cleanup category: $category"
+            return 1
             ;;
     esac
 }

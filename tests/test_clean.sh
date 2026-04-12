@@ -79,8 +79,9 @@ else
 fi
 
 # Test 6: Category dispatcher handles unknown category
-output=$(cmd_clean_category "invalid_category" 2>&1 || true)
-if echo "$output" | grep -q "Unknown cleanup category"; then
+if output=$(cmd_clean_category "invalid_category" 2>&1); then
+    fail "dispatcher should return non-zero for unknown category"
+elif echo "$output" | grep -q "Unknown cleanup category"; then
     pass "dispatcher rejects unknown category"
 else
     fail "dispatcher should reject unknown category"

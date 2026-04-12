@@ -29,6 +29,7 @@ PROTECTED_PATHS=(
     "/" "/bin" "/boot" "/dev" "/etc" "/home" "/lib" "/lib64"
     "/media" "/mnt" "/opt" "/proc" "/root" "/run" "/sbin"
     "/srv" "/sys" "/usr" "/var"
+    "/usr/bin" "/usr/lib" "/usr/lib64" "/usr/sbin"
 )
 
 # ── Configuration ───────────────────────────────────────────────────
@@ -100,7 +101,11 @@ show_progress() {
 
 # ── JSON Output ─────────────────────────────────────────────────────
 json_output() {
-    echo "$1"
+    if [[ "${FORMAT:-text}" == "json" && "${JSON_STDOUT_FD:-}" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$1" >&"$JSON_STDOUT_FD"
+    else
+        printf '%s\n' "$1"
+    fi
 }
 
 # Build JSON object from key=value arguments
@@ -146,14 +151,16 @@ format_size() {
 # Get directory/file size in bytes
 get_size_bytes() {
     local path="$1"
+    local size=""
     if [[ -d "$path" ]]; then
-        du -sb "$path" 2>/dev/null | cut -f1 || echo 0
+        size=$(du -sb "$path" 2>/dev/null | awk 'NR==1 {print $1}' || true)
     elif [[ -f "$path" ]]; then
         # Try Linux stat first, then macOS stat
-        stat -c%s "$path" 2>/dev/null || stat -f%z "$path" 2>/dev/null || echo 0
+        size=$(stat -c%s "$path" 2>/dev/null || stat -f%z "$path" 2>/dev/null || true)
     else
-        echo 0
+        size=0
     fi
+    [[ "$size" =~ ^[0-9]+$ ]] && echo "$size" || echo 0
 }
 
 # ── Safety ──────────────────────────────────────────────────────────
@@ -189,10 +196,12 @@ validate_path() {
 }
 
 is_protected_path() {
-    local path
-    path=$(realpath -m "$1" 2>/dev/null || echo "$1")
+    local input_path resolved_path protected resolved_protected
+    input_path=$(realpath -m "$1" 2>/dev/null || echo "$1")
+    resolved_path=$(realpath "$input_path" 2>/dev/null || echo "$input_path")
     for protected in "${PROTECTED_PATHS[@]}"; do
-        if [[ "$path" == "$protected" ]]; then
+        resolved_protected=$(realpath "$protected" 2>/dev/null || echo "$protected")
+        if [[ "$input_path" == "$protected" || "$resolved_path" == "$resolved_protected" ]]; then
             return 0
         fi
     done

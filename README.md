@@ -2,7 +2,7 @@
 
 **WSL System Optimization CLI**
 
-WSLMole is a terminal-based system optimization tool built for WSL2 (Windows Subsystem for Linux) environments. It scans, cleans, and tunes your WSL instance through an interactive whiptail TUI or direct CLI commands. Inspired by [WinMole](https://github.com/mrelph/WinMole) and [tw93/Mole](https://github.com/nicehash/Mole).
+WSLMole is a terminal-based system optimization tool built for WSL2 (Windows Subsystem for Linux) environments. It scans, cleans, and tunes your WSL instance through direct CLI commands or an inline interactive menu. Inspired by [WinMole](https://github.com/mrelph/WinMole) and [tw93/Mole](https://github.com/nicehash/Mole).
 
 ![Bash](https://img.shields.io/badge/Bash-4EAA25?logo=gnubash&logoColor=white)
 ![WSL2](https://img.shields.io/badge/WSL2-0078D4?logo=windows&logoColor=white)
@@ -20,7 +20,8 @@ WSLMole is a terminal-based system optimization tool built for WSL2 (Windows Sub
 - **Package Manager** -- audit, update, autoremove, and snap refresh for both APT and Snap
 - **WSL Tools** -- memory/swap configuration, Windows interop status, filesystem performance, and distro management
 - **Quick Scan** -- one-command health check with a 0-100 score, cleanable-space summary, and actionable recommendations
-- **Interactive TUI** -- whiptail-based menu system with looping submenus for every module
+- **Action Plan** -- risk-labeled recommendations with suggested commands and safe auto-fix actions
+- **Interactive CLI** -- inline Bash menu system with looping submenus for every module
 
 ---
 
@@ -42,16 +43,22 @@ export PATH="/path/to/WSLMole:$PATH"
 
 ## Quick Start
 
-Launch the interactive TUI:
+Run a quick health scan:
 
 ```bash
 wslmole
 ```
 
-Run a quick health scan:
+Launch the interactive menu:
 
 ```bash
-wslmole -q
+wslmole -i
+```
+
+Review a risk-labeled action plan:
+
+```bash
+wslmole plan
 ```
 
 ---
@@ -63,9 +70,20 @@ wslmole -q
 Remove cached packages, old kernels, temp files, and more.
 
 ```bash
-wslmole clean           # interactive submenu
+wslmole clean           # clean default high-value categories
 wslmole clean apt       # clean APT cache only
 wslmole clean all       # run every cleanup category
+```
+
+### plan -- Action Plan
+
+Review recommended actions with risk labels before changing the system.
+
+```bash
+wslmole plan           # show risk-labeled recommendations
+wslmole --format json plan  # emit a machine-readable plan
+wslmole fix --dry-run  # preview low-risk automatic cleanup
+wslmole fix --yes      # apply low-risk cleanup without prompts
 ```
 
 ### disk -- Disk Analysis
@@ -73,7 +91,7 @@ wslmole clean all       # run every cleanup category
 Find large files, stale data, and filesystem hogs.
 
 ```bash
-wslmole disk            # interactive submenu
+wslmole disk            # filesystem summary
 wslmole disk large      # list largest files
 wslmole disk usage      # filesystem usage overview
 ```
@@ -83,7 +101,7 @@ wslmole disk usage      # filesystem usage overview
 Purge build artifacts and dependency caches across languages.
 
 ```bash
-wslmole dev             # interactive submenu
+wslmole dev             # scan current directory for artifacts
 wslmole dev node        # remove node_modules directories
 wslmole dev all         # clean all developer artifacts
 ```
@@ -93,7 +111,7 @@ wslmole dev all         # clean all developer artifacts
 Inspect processes, memory, services, and WSL health.
 
 ```bash
-wslmole diagnose            # interactive submenu
+wslmole diagnose            # run all diagnostics
 wslmole diagnose memory     # memory breakdown
 wslmole diagnose services   # list failed systemd services
 ```
@@ -103,7 +121,7 @@ wslmole diagnose services   # list failed systemd services
 Audit and maintain APT and Snap packages.
 
 ```bash
-wslmole packages            # interactive submenu
+wslmole packages            # audit available updates
 wslmole packages update     # update all packages
 wslmole packages audit      # security audit
 ```
@@ -113,7 +131,7 @@ wslmole packages audit      # security audit
 Manage WSL-specific settings and cross-OS integration.
 
 ```bash
-wslmole wsl             # interactive submenu
+wslmole wsl             # WSL environment info
 wslmole wsl memory      # check/configure WSL memory limits
 wslmole wsl interop     # Windows interop status
 ```
@@ -122,20 +140,22 @@ wslmole wsl interop     # Windows interop status
 
 ## Interactive Mode
 
-Running `wslmole` with no arguments opens the main menu:
+Running `wslmole` with no arguments starts a quick health scan. Use `wslmole -i` to open the main menu:
 
 ```
-1) System Cleanup
-2) Disk Analysis
-3) Developer Cleanup
-4) System Diagnostics
-5) Package Manager
-6) WSL Tools
-7) Quick Scan
-8) Exit
+1) Action Plan
+2) System Cleanup
+3) Disk Analysis
+4) Developer Cleanup
+5) System Diagnostics
+6) Package Manager
+7) WSL Tools
+8) Quick Scan
+9) Auto-Fix
+0) Exit
 ```
 
-Each option opens a whiptail submenu that loops until you return to the main menu.
+Each option opens an inline submenu that loops until you return to the main menu.
 
 ---
 
@@ -175,7 +195,7 @@ Each option opens a whiptail submenu that loops until you return to the main men
 
 ## Technology
 
-WSLMole is written entirely in **Bash** and depends only on standard GNU/Linux tools plus **whiptail** for the TUI. No compiled binaries, no runtime dependencies, no package manager required beyond what ships with Ubuntu on WSL2.
+WSLMole is written entirely in **Bash** and depends only on standard GNU/Linux tools. No compiled binaries and no runtime package manager required beyond what ships with Ubuntu on WSL2.
 
 ---
 

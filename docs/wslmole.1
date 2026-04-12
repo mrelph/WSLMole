@@ -9,11 +9,11 @@ wslmole \- WSL system optimization tool
 .B wslmole
 is a terminal-based system optimization tool built for WSL2 (Windows Subsystem
 for Linux) environments. It scans, cleans, and tunes your WSL instance through
-an interactive whiptail TUI or direct CLI commands.
+direct CLI commands or an inline interactive menu.
 .PP
 Running
 .B wslmole
-with no arguments launches the interactive TUI menu.
+with no arguments runs a quick health scan.
 .SH COMMANDS
 .TP
 .B clean
@@ -39,10 +39,17 @@ autoremove unused dependencies, clean caches, and list installed packages.
 .B wsl \fR[\fIaction\fR]
 WSL-specific tools: environment info, memory configuration, virtual disk
 compact guide, and Windows interop status.
+.TP
+.B plan
+Show a risk-labeled action plan with suggested commands and safe auto-fix
+actions.
+.TP
+.B fix
+Preview and apply low-risk cleanup actions from the action plan.
 .SH GLOBAL OPTIONS
 .TP
 .BR \-i ", " \-\-interactive
-Launch the interactive TUI menu.
+Launch the inline interactive menu.
 .TP
 .BR \-q ", " \-\-quick
 Run a quick system health scan with score and recommendations.
@@ -149,13 +156,35 @@ Guide to compacting the WSL2 virtual disk (vhdx).
 .TP
 .B interop
 Windows/Linux interop status and PATH integration.
+.SH PLAN AND FIX OPTIONS
+.TP
+.B plan
+Shows recommended actions without changing the system.
+.TP
+.BR fix " " \-\-dry\-run
+Shows the current action plan without applying low-risk cleanup actions.
+.TP
+.BR fix " " \-\-yes
+Applies low-risk cleanup actions without prompting.
 .SH EXAMPLES
 .TP
-Launch interactive menu:
+Run a quick health scan:
 .B wslmole
 .TP
-Quick health scan:
+Launch interactive menu:
+.B wslmole \-i
+.TP
+Quick health scan explicitly:
 .B wslmole \-q
+.TP
+Review the action plan:
+.B wslmole plan
+.TP
+Emit the action plan as JSON:
+.B wslmole \-\-format json plan
+.TP
+Preview low-risk automatic cleanup:
+.B wslmole fix \-\-dry\-run
 .TP
 Preview all cleanup categories:
 .B wslmole clean \-\-dry\-run

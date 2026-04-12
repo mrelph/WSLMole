@@ -53,6 +53,7 @@ run_interactive_menu() {
 
     while true; do
         _menu_prompt "WSLMole Interactive Menu" \
+            "Action Plan" \
             "System Cleanup" \
             "Disk Analysis" \
             "Developer Cleanup" \
@@ -64,14 +65,15 @@ run_interactive_menu() {
             "Exit"
 
         case "$REPLY" in
-            1) menu_clean ;;
-            2) menu_disk ;;
-            3) menu_dev ;;
-            4) menu_diagnose ;;
-            5) menu_packages ;;
-            6) menu_wsl ;;
-            7) run_quick_scan; press_enter ;;
-            8) cmd_fix; press_enter ;;
+            1) cmd_plan; press_enter ;;
+            2) menu_clean ;;
+            3) menu_disk ;;
+            4) menu_dev ;;
+            5) menu_diagnose ;;
+            6) menu_packages ;;
+            7) menu_wsl ;;
+            8) run_quick_scan; press_enter ;;
+            9) cmd_fix; press_enter ;;
             0) break ;;
         esac
     done

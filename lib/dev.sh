@@ -16,6 +16,7 @@ cmd_dev() {
     local path="."
     local older_than=""
     local types=()
+    local path_set=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -47,13 +48,26 @@ cmd_dev() {
                 cmd_dev_help
                 return 0
                 ;;
+            all|node|node_modules|target|__pycache__|.gradle|venv|.venv|build|dist|.next|.nuxt|.cache|vendor|.tox|.pytest_cache|coverage|.nyc_output)
+                case "$1" in
+                    node) types+=(node_modules) ;;
+                    *) types+=("$1") ;;
+                esac
+                shift
+                ;;
             -*)
                 print_error "Unknown option: $1"
                 cmd_dev_help
                 return 1
                 ;;
             *)
+                if [[ "$path_set" == true ]]; then
+                    print_error "Unexpected argument: $1"
+                    cmd_dev_help
+                    return 1
+                fi
                 path="$1"
+                path_set=true
                 shift
                 ;;
         esac

@@ -13,6 +13,7 @@ cmd_disk() {
     local mode="summary"
     local depth=3
     local top=10
+    local path_set=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -44,13 +45,29 @@ cmd_disk() {
                 cmd_disk_help
                 return 0
                 ;;
+            summary|tree|files|file|large|largest|folders|folder|dirs|types|type|old|usage)
+                case "$1" in
+                    file|large|largest) mode="files" ;;
+                    folder|dirs) mode="folders" ;;
+                    type) mode="types" ;;
+                    usage) mode="summary" ;;
+                    *) mode="$1" ;;
+                esac
+                shift
+                ;;
             -*)
                 print_error "Unknown option: $1"
                 cmd_disk_help
                 return 1
                 ;;
             *)
+                if [[ "$path_set" == true ]]; then
+                    print_error "Unexpected argument: $1"
+                    cmd_disk_help
+                    return 1
+                fi
                 path="$1"
+                path_set=true
                 shift
                 ;;
         esac

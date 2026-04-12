@@ -296,6 +296,7 @@ MOLE
     # ── Footer ────────────────────────────────────────────────────
 
     echo -e "  ${DIM}─────────────────────────────────────────────${NC}"
+    echo -e "  ${BOLD}wslmole plan${NC}        Risk-labeled action plan"
     echo -e "  ${BOLD}wslmole fix${NC}         Auto-fix recommendations"
     echo -e "  ${BOLD}wslmole clean${NC}       Full system cleanup"
     echo -e "  ${BOLD}wslmole -i${NC}          Interactive menu"

@@ -40,6 +40,11 @@ autoremove unused dependencies, clean caches, and list installed packages.
 WSL-specific tools: environment info, memory configuration, virtual disk
 compact guide, and Windows interop status.
 .TP
+.B scan
+Run a quick system health scan. This is the same behavior as running
+.B wslmole
+with no command.
+.TP
 .B plan
 Show a risk-labeled action plan with suggested commands and safe auto-fix
 actions.
@@ -161,8 +166,23 @@ Windows/Linux interop status and PATH integration.
 .B plan
 Shows recommended actions without changing the system.
 .TP
+.BR plan " " \-\-risk " " \fIRISK\fR
+Show only recommendations with risk
+.BR low ", " medium ", or " review .
+.TP
+.BR plan " " \-\-auto
+Show only automatic cleanup actions.
+.TP
+.BR plan " " \-\-category " " \fICATEGORY\fR
+Show only one recommendation category, such as
+.BR logs ", " tmp ", or " snap .
+.TP
 .BR fix " " \-\-dry\-run
 Shows the current action plan without applying low-risk cleanup actions.
+.TP
+.BR fix " " \-\-only " " \fILIST\fR
+Apply only the comma-separated automatic categories in LIST, such as
+.BR logs,tmp .
 .TP
 .BR fix " " \-\-yes
 Applies low-risk cleanup actions without prompting.
@@ -177,14 +197,23 @@ Launch interactive menu:
 Quick health scan explicitly:
 .B wslmole \-q
 .TP
+Quick health scan by command:
+.B wslmole scan
+.TP
 Review the action plan:
 .B wslmole plan
+.TP
+Review only automatic plan items:
+.B wslmole plan \-\-auto
 .TP
 Emit the action plan as JSON:
 .B wslmole \-\-format json plan
 .TP
 Preview low-risk automatic cleanup:
 .B wslmole fix \-\-dry\-run
+.TP
+Apply only log and temp cleanup:
+.B wslmole fix \-\-only logs,tmp
 .TP
 Preview all cleanup categories:
 .B wslmole clean \-\-dry\-run

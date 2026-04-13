@@ -44,6 +44,7 @@ show_usage() {
     echo -e "  ${BOLD}diagnose${NC} [type]    System diagnostics"
     echo -e "  ${BOLD}packages${NC} [action]  Package manager (apt + snap)"
     echo -e "  ${BOLD}wsl${NC} [action]       WSL-specific tools"
+    echo -e "  ${BOLD}scan${NC}               Quick system health scan"
     echo -e "  ${BOLD}plan${NC}               Show a risk-labeled action plan"
     echo -e "  ${BOLD}fix${NC}                Auto-fix based on health scan"
     echo -e "  ${BOLD}help${NC} [command]     Show help for a command"
@@ -61,12 +62,42 @@ show_usage() {
     echo -e "Run ${CYAN}wslmole help <command>${NC} for command-specific options."
 }
 
+cmd_scan() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                echo -e "${BOLD}Usage:${NC} wslmole scan"
+                echo ""
+                echo "  Run a quick system health scan with score and recommendations."
+                return 0
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                echo -e "${BOLD}Usage:${NC} wslmole scan"
+                return 1
+                ;;
+        esac
+    done
+
+    run_quick_scan
+}
+
 # ── Fix Command ────────────────────────────────────────────────────
 cmd_fix() {
+    PLAN_FIX_ONLY=""
+
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -n|--dry-run) DRY_RUN=true; shift ;;
             --yes) FORCE=true; shift ;;
+            --only)
+                if [[ -z "${2:-}" ]]; then
+                    print_error "--only requires a comma-separated category list"
+                    return 1
+                fi
+                PLAN_FIX_ONLY="$2"
+                shift 2
+                ;;
             -h|--help)
                 echo -e "${BOLD}Usage:${NC} wslmole fix [options]"
                 echo ""
@@ -74,6 +105,7 @@ cmd_fix() {
                 echo ""
                 echo -e "${BOLD}Options:${NC}"
                 echo "  -n, --dry-run    Show the plan without applying actions"
+                echo "  --only LIST      Apply only these automatic categories (logs,tmp)"
                 echo "  --yes            Apply low-risk actions without prompting"
                 echo "  -h, --help       Show this help"
                 return 0
@@ -202,6 +234,7 @@ main() {
                     clean) cmd_clean_help ;; disk) cmd_disk_help ;;
                     dev) cmd_dev_help ;; diagnose) cmd_diagnose_help ;;
                     packages) cmd_packages_help ;; wsl) cmd_wsl_help ;;
+                    scan) cmd_scan --help ;;
                     plan) cmd_plan_help ;;
                     fix) cmd_fix --help ;;
                     *) print_error "Unknown command: ${args[0]}"; show_usage; exit 1 ;;
@@ -228,6 +261,9 @@ main() {
             ;;
         wsl)
             cmd_wsl "${args[@]+"${args[@]}"}" || exit_code=$?
+            ;;
+        scan)
+            cmd_scan "${args[@]+"${args[@]}"}" || exit_code=$?
             ;;
         plan)
             cmd_plan "${args[@]+"${args[@]}"}" || exit_code=$?

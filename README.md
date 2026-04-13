@@ -47,6 +47,7 @@ Run a quick health scan:
 
 ```bash
 wslmole
+wslmole scan
 ```
 
 Launch the interactive menu:
@@ -82,7 +83,11 @@ Review recommended actions with risk labels before changing the system.
 ```bash
 wslmole plan           # show risk-labeled recommendations
 wslmole --format json plan  # emit a machine-readable plan
+wslmole plan --risk low     # show only low-risk recommendations
+wslmole plan --auto         # show only automatic cleanup actions
+wslmole plan --category logs
 wslmole fix --dry-run  # preview low-risk automatic cleanup
+wslmole fix --only logs,tmp
 wslmole fix --yes      # apply low-risk cleanup without prompts
 ```
 

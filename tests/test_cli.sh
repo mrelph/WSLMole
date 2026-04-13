@@ -109,7 +109,14 @@ else
     fail "plan --help exits 0"
 fi
 
-# Test 13: help output mentions fix command
+# Test 13: scan --help exits 0
+if "$WSLMOLE" scan --help >/dev/null 2>&1; then
+    pass "scan --help exits 0"
+else
+    fail "scan --help exits 0"
+fi
+
+# Test 14: help output mentions fix command
 output=$("$WSLMOLE" --help 2>&1)
 if echo "$output" | grep -q "fix"; then
     pass "--help mentions fix command"
@@ -117,42 +124,70 @@ else
     fail "--help mentions fix command"
 fi
 
-# Test 14: help output mentions plan command
+# Test 15: help output mentions plan command
 if echo "$output" | grep -q "plan"; then
     pass "--help mentions plan command"
 else
     fail "--help mentions plan command"
 fi
 
-# Test 15: help output mentions interactive flag
+# Test 16: help output mentions scan command
+if echo "$output" | grep -q "scan"; then
+    pass "--help mentions scan command"
+else
+    fail "--help mentions scan command"
+fi
+
+# Test 17: help output mentions interactive flag
 if echo "$output" | grep -q "\-i"; then
     pass "--help mentions -i flag"
 else
     fail "--help mentions -i flag"
 fi
 
-# Test 16: positional clean category works
+# Test 18: scan command exits 0
+if "$WSLMOLE" scan >/dev/null 2>&1; then
+    pass "scan command exits 0"
+else
+    fail "scan command exits 0"
+fi
+
+# Test 19: scan command works in JSON mode
+scan_json=$("$WSLMOLE" --format json scan 2>/dev/null)
+if command -v python3 >/dev/null 2>&1; then
+    if printf '%s\n' "$scan_json" | python3 -m json.tool >/dev/null 2>&1; then
+        pass "scan JSON stdout is parseable"
+    else
+        fail "scan JSON stdout is parseable"
+    fi
+elif [[ "$scan_json" == \{* ]]; then
+    pass "scan JSON stdout starts with JSON"
+else
+    fail "scan JSON stdout starts with JSON"
+fi
+
+# Test 20: positional clean category works
 if "$WSLMOLE" clean apt --dry-run >/dev/null 2>&1; then
     pass "clean positional category works"
 else
     fail "clean positional category works"
 fi
 
-# Test 17: positional disk mode works
+# Test 21: positional disk mode works
 if "$WSLMOLE" disk large /tmp -n 1 >/dev/null 2>&1; then
     pass "disk positional mode works"
 else
     fail "disk positional mode works"
 fi
 
-# Test 18: positional dev artifact type works
+# Test 22: positional dev artifact type works
 if "$WSLMOLE" dev node /tmp --dry-run >/dev/null 2>&1; then
     pass "dev positional type works"
 else
     fail "dev positional type works"
 fi
 
-# Test 19: JSON mode emits parseable stdout for subcommands
+# Test 23: JSON mode emits parseable stdout for subcommands
 json_output=$("$WSLMOLE" --format json dev /tmp --dry-run 2>/dev/null)
 if command -v python3 >/dev/null 2>&1; then
     if printf '%s\n' "$json_output" | python3 -m json.tool >/dev/null 2>&1; then
@@ -166,7 +201,7 @@ else
     fail "--format json subcommand stdout starts with JSON"
 fi
 
-# Test 20: plan command works in JSON mode
+# Test 24: plan command works in JSON mode
 plan_json=$("$WSLMOLE" --format json plan 2>/dev/null)
 if command -v python3 >/dev/null 2>&1; then
     if printf '%s\n' "$plan_json" | python3 -m json.tool >/dev/null 2>&1; then
@@ -180,14 +215,35 @@ else
     fail "plan JSON stdout starts with JSON"
 fi
 
-# Test 21: fix dry-run exits 0
+# Test 25: plan filters work
+if "$WSLMOLE" plan --risk low >/dev/null 2>&1 && "$WSLMOLE" plan --auto >/dev/null 2>&1 && "$WSLMOLE" plan --category logs >/dev/null 2>&1; then
+    pass "plan filters exit 0"
+else
+    fail "plan filters exit 0"
+fi
+
+# Test 26: invalid plan risk exits non-zero
+if "$WSLMOLE" plan --risk banana >/dev/null 2>&1; then
+    fail "invalid plan risk should exit non-zero"
+else
+    pass "invalid plan risk exits non-zero"
+fi
+
+# Test 27: fix dry-run exits 0
 if "$WSLMOLE" fix --dry-run >/dev/null 2>&1; then
     pass "fix --dry-run exits 0"
 else
     fail "fix --dry-run exits 0"
 fi
 
-# Test 22: fix dry-run works in JSON mode
+# Test 28: fix --only dry-run exits 0
+if "$WSLMOLE" fix --dry-run --only logs,tmp >/dev/null 2>&1; then
+    pass "fix --only dry-run exits 0"
+else
+    fail "fix --only dry-run exits 0"
+fi
+
+# Test 29: fix dry-run works in JSON mode
 fix_json=$("$WSLMOLE" --format json fix --dry-run 2>/dev/null)
 if command -v python3 >/dev/null 2>&1; then
     if printf '%s\n' "$fix_json" | python3 -m json.tool >/dev/null 2>&1; then

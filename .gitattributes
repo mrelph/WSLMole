@@ -1,0 +1,6 @@
+*.sh text eol=lf
+wslmole text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.1 text eol=lf

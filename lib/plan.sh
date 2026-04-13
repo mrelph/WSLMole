@@ -10,6 +10,10 @@ PLAN_DETAILS=()
 PLAN_COMMANDS=()
 PLAN_AUTOS=()
 PLAN_CATEGORIES=()
+PLAN_FILTER_RISK=""
+PLAN_FILTER_AUTO=false
+PLAN_FILTER_CATEGORY=""
+PLAN_FIX_ONLY=""
 
 _plan_json_escape() {
     local value="$1"
@@ -29,12 +33,30 @@ _plan_reset() {
 }
 
 _plan_add_item() {
-    PLAN_TITLES+=("$1")
-    PLAN_RISKS+=("$2")
-    PLAN_DETAILS+=("$3")
-    PLAN_COMMANDS+=("$4")
-    PLAN_AUTOS+=("$5")
-    PLAN_CATEGORIES+=("$6")
+    local title="$1" risk="$2" detail="$3" command="$4" auto="$5" category="$6"
+
+    if [[ -n "$PLAN_FILTER_RISK" && "$risk" != "$PLAN_FILTER_RISK" ]]; then
+        return 0
+    fi
+
+    if [[ "$PLAN_FILTER_AUTO" == true && "$auto" != "true" ]]; then
+        return 0
+    fi
+
+    if [[ -n "$PLAN_FILTER_CATEGORY" && "$category" != "$PLAN_FILTER_CATEGORY" ]]; then
+        return 0
+    fi
+
+    if [[ -n "$PLAN_FIX_ONLY" ]] && ! _plan_fix_only_allows "$category"; then
+        return 0
+    fi
+
+    PLAN_TITLES+=("$title")
+    PLAN_RISKS+=("$risk")
+    PLAN_DETAILS+=("$detail")
+    PLAN_COMMANDS+=("$command")
+    PLAN_AUTOS+=("$auto")
+    PLAN_CATEGORIES+=("$category")
 }
 
 _plan_sum_old_files() {
@@ -195,12 +217,48 @@ cmd_plan_help() {
     echo "  Show a risk-labeled action plan without changing the system."
     echo ""
     echo -e "${BOLD}Options:${NC}"
-    echo "  -h, --help       Show this help"
+    echo "  --risk RISK          Show only items with risk: low, medium, review"
+    echo "  --auto               Show only low-risk automatic actions"
+    echo "  --category CATEGORY  Show only one category (logs, tmp, snap, etc.)"
+    echo "  -h, --help           Show this help"
 }
 
 cmd_plan() {
+    PLAN_FILTER_RISK=""
+    PLAN_FILTER_AUTO=false
+    PLAN_FILTER_CATEGORY=""
+    PLAN_FIX_ONLY=""
+
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --risk)
+                if [[ -z "${2:-}" ]]; then
+                    print_error "--risk requires a value"
+                    return 1
+                fi
+                case "$2" in
+                    low|medium|review)
+                        PLAN_FILTER_RISK="$2"
+                        ;;
+                    *)
+                        print_error "Invalid risk: $2. Use low, medium, or review"
+                        return 1
+                        ;;
+                esac
+                shift 2
+                ;;
+            --auto)
+                PLAN_FILTER_AUTO=true
+                shift
+                ;;
+            --category)
+                if [[ -z "${2:-}" ]]; then
+                    print_error "--category requires a value"
+                    return 1
+                fi
+                PLAN_FILTER_CATEGORY="$2"
+                shift 2
+                ;;
             -h|--help)
                 cmd_plan_help
                 return 0
@@ -224,7 +282,21 @@ cmd_plan() {
 plan_has_auto_actions() {
     local i
     for i in "${!PLAN_AUTOS[@]}"; do
-        [[ "${PLAN_AUTOS[$i]}" == "true" ]] && return 0
+        [[ "${PLAN_AUTOS[$i]}" == "true" ]] || continue
+        _plan_fix_only_allows "${PLAN_CATEGORIES[$i]}" && return 0
+    done
+    return 1
+}
+
+_plan_fix_only_allows() {
+    local category="$1"
+    local item
+    local -a only_items
+    [[ -n "$PLAN_FIX_ONLY" ]] || return 0
+    IFS=',' read -ra only_items <<< "$PLAN_FIX_ONLY"
+    for item in "${only_items[@]}"; do
+        item="${item//[[:space:]]/}"
+        [[ "$item" == "$category" ]] && return 0
     done
     return 1
 }
@@ -234,6 +306,9 @@ plan_apply_auto_actions() {
     for i in "${!PLAN_AUTOS[@]}"; do
         [[ "${PLAN_AUTOS[$i]}" == "true" ]] || continue
         category="${PLAN_CATEGORIES[$i]}"
+        if ! _plan_fix_only_allows "$category"; then
+            continue
+        fi
         print_section "Applying: ${PLAN_TITLES[$i]}"
         case "$category" in
             apt|logs|tmp)

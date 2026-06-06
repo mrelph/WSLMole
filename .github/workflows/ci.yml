@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [ master, main, develop ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ master, main ]
 
@@ -28,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc
+          sudo apt-get install -y whiptail bc
       
       - name: Run test suite
         run: |
@@ -47,7 +48,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc
+          sudo apt-get install -y whiptail bc
       
       - name: Test CLI commands
         run: |
@@ -61,6 +62,8 @@ jobs:
           ./wslmole diagnose --help
           ./wslmole packages --help
           ./wslmole wsl --help || true  # May fail if not in WSL
+          ./wslmole update --help
+          ./wslmole update --check || true  # May fail outside git repo context
 
       - name: Verify man page
         run: mandoc docs/wslmole.1 > /dev/null

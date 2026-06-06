@@ -24,10 +24,6 @@ cmd_clean() {
                 DRY_RUN=true
                 shift
                 ;;
-            -f|--force)
-                FORCE=true
-                shift
-                ;;
             -c|--category)
                 if [[ -z "${2:-}" ]]; then
                     print_error "--category requires a comma-separated list"
@@ -40,14 +36,15 @@ cmd_clean() {
                 cmd_clean_help
                 return 0
                 ;;
-            all|apt|snap|logs|tmp|temp|browser|user|userdata|wsl)
-                categories+=("$1")
-                shift
-                ;;
-            *)
+            -*)
                 print_error "Unknown option: $1"
                 cmd_clean_help
                 return 1
+                ;;
+            *)
+                # Positional arg: treat as category name (e.g. wslmole clean apt)
+                categories+=("$1")
+                shift
                 ;;
         esac
     done
@@ -121,7 +118,7 @@ cmd_clean() {
 
 # ── Help ───────────────────────────────────────────────────────────
 cmd_clean_help() {
-    echo -e "${BOLD}Usage:${NC} wslmole clean [options]"
+    echo -e "${BOLD}Usage:${NC} wslmole clean [category...] [options]"
     echo ""
     echo "  Scan and clean system caches, logs, temp files, and more."
     echo ""
@@ -145,6 +142,7 @@ cmd_clean_help() {
     echo -e "  ${CYAN}wslmole clean --dry-run${NC}              Preview all categories"
     echo -e "  ${CYAN}wslmole clean -c apt,logs${NC}            Clean APT and logs only"
     echo -e "  ${CYAN}wslmole clean -f -c tmp${NC}              Force-clean temp files"
+    echo -e "  ${CYAN}wslmole clean apt logs${NC}               Clean APT and logs (positional)"
     echo -e "  ${CYAN}wslmole clean -n -c browser,user${NC}     Preview browser & user cleanup"
 }
 
@@ -190,6 +188,7 @@ cmd_clean_category() {
             ;;
         *)
             print_error "Unknown cleanup category: $category"
+            suggest_correction "$category" "categories" "${CLEAN_CATEGORIES[@]}" all
             return 1
             ;;
     esac

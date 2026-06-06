@@ -9,25 +9,37 @@ echo "║     WSLMole Test Suite Runner          ║"
 echo "╚════════════════════════════════════════╝"
 echo ""
 
+SUITES_PASSED=0
+SUITES_FAILED=0
+TOTAL_TESTS=0
 TOTAL_PASSED=0
 TOTAL_FAILED=0
-SUITE_FAILURES=0
 
 run_test_suite() {
     local test_file="$1"
-    local test_name=$(basename "$test_file" .sh)
-    
+    local test_name
+    test_name=$(basename "$test_file" .sh)
+
     echo "Running $test_name..."
     echo "----------------------------------------"
-    
-    if bash "$test_file"; then
-        echo "✓ $test_name passed"
-        TOTAL_PASSED=$((TOTAL_PASSED + 1))
+
+    local output
+    if output=$(bash "$test_file" 2>&1); then
+        echo "$output"
+        SUITES_PASSED=$((SUITES_PASSED + 1))
     else
-        echo "✗ $test_name failed"
-        TOTAL_FAILED=$((TOTAL_FAILED + 1))
-        SUITE_FAILURES=$((SUITE_FAILURES + 1))
+        echo "$output"
+        SUITES_FAILED=$((SUITES_FAILED + 1))
     fi
+
+    # Parse individual test counts from suite output
+    local suite_run suite_passed suite_failed
+    suite_run=$(echo "$output" | grep -oP 'Tests run: \K[0-9]+' || echo 0)
+    suite_passed=$(echo "$output" | grep -oP 'Passed: \K[0-9]+' || echo 0)
+    suite_failed=$(echo "$output" | grep -oP 'Failed: \K[0-9]+' || echo 0)
+    TOTAL_TESTS=$((TOTAL_TESTS + suite_run))
+    TOTAL_PASSED=$((TOTAL_PASSED + suite_passed))
+    TOTAL_FAILED=$((TOTAL_FAILED + suite_failed))
     echo ""
 }
 
@@ -39,16 +51,16 @@ for test_file in "$SCRIPT_DIR"/test_*.sh; do
 done
 
 echo "========================================"
-echo "Test Suites Summary"
+echo "Summary"
 echo "========================================"
-echo "Suites passed: $TOTAL_PASSED"
-echo "Suites failed: $TOTAL_FAILED"
+echo "Suites: $((SUITES_PASSED + SUITES_FAILED)) total, $SUITES_PASSED passed, $SUITES_FAILED failed"
+echo "Tests:  $TOTAL_TESTS total, $TOTAL_PASSED passed, $TOTAL_FAILED failed"
 echo ""
 
-if [[ $SUITE_FAILURES -eq 0 ]]; then
+if [[ $SUITES_FAILED -eq 0 ]]; then
     echo "✓ All test suites passed!"
     exit 0
 else
-    echo "✗ $SUITE_FAILURES test suite(s) failed"
+    echo "✗ $SUITES_FAILED test suite(s) failed"
     exit 1
 fi

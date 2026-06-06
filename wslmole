@@ -20,15 +20,13 @@ FORMAT="text"
 
 # ── ASCII Art ───────────────────────────────────────────────────────
 show_logo() {
-    echo -e "${CYAN}"
-    cat << 'LOGO'
- __      __  ___ _     __  __       _
- \ \    / / / __| |   |  \/  | ___ | | ___
-  \ \/\/ /  \__ \ |__ | |\/| |/ _ \| |/ -_)
-   \_/\_/   |___/____||_|  |_|\___/|_|\___|
-LOGO
-    echo -e "${NC}"
-    echo -e "        ${BOLD}WSL System Optimization Tool${NC} v${WSLMOLE_VERSION}"
+    echo ""
+    echo -e "  ${CYAN}${BOLD} __      __  ___ _     __  __       _${NC}"
+    echo -e "  ${CYAN}${BOLD} \\ \\    / / / __| |   |  \\/  | ___ | | ___${NC}"
+    echo -e "  ${CYAN}${BOLD}  \\ \\/\\/ /  \\__ \\ |__ | |\\/| |/ _ \\| |/ -_)${NC}"
+    echo -e "  ${CYAN}${BOLD}   \\_/\\_/   |___/____||_|  |_|\\___/|_|\\___|${NC}"
+    echo ""
+    echo -e "  ${DIM}WSL System Optimization Tool${NC}  ${BOLD}v${WSLMOLE_VERSION}${NC}"
     echo ""
 }
 
@@ -47,6 +45,7 @@ show_usage() {
     echo -e "  ${BOLD}scan${NC}               Quick system health scan"
     echo -e "  ${BOLD}plan${NC}               Show a risk-labeled action plan"
     echo -e "  ${BOLD}fix${NC}                Auto-fix based on health scan"
+    echo -e "  ${BOLD}update${NC}             Check for and install updates"
     echo -e "  ${BOLD}help${NC} [command]     Show help for a command"
     echo ""
     echo -e "${BOLD}Options:${NC}"
@@ -55,6 +54,7 @@ show_usage() {
     echo -e "  ${BOLD}-v${NC}, ${BOLD}--verbose${NC}      Enable verbose logging"
     echo -e "  ${BOLD}--format${NC} FORMAT    Output format: text (default) or json"
     echo -e "  ${BOLD}--yes${NC}              Skip confirmation prompts"
+    echo -e "  ${BOLD}--no-color${NC}         Disable colored output"
     echo -e "  ${BOLD}-h${NC}, ${BOLD}--help${NC}         Show this help message"
     echo -e "  ${BOLD}--version${NC}          Show version"
     echo ""
@@ -180,6 +180,11 @@ main() {
                 VERBOSE=true
                 shift
                 ;;
+            --no-color)
+                NO_COLOR=1
+                _init_colors
+                shift
+                ;;
             --format)
                 if [[ $# -lt 2 ]]; then
                     print_error "--format requires an argument"
@@ -196,8 +201,22 @@ main() {
                 esac
                 shift 2
                 ;;
-            --yes)
+            --format=*)
+                local fmt_val="${1#--format=}"
+                case "$fmt_val" in
+                    text|json)
+                        FORMAT="$fmt_val"
+                        ;;
+                    *)
+                        print_error "Invalid format: $fmt_val. Use 'text' or 'json'"
+                        exit 1
+                        ;;
+                esac
+                shift
+                ;;
+            --yes|-y)
                 FORCE=true
+                DRY_RUN=false
                 shift
                 ;;
             -*)
@@ -213,6 +232,9 @@ main() {
     done
 
     init_logging
+
+    # Periodic update check (background, non-blocking)
+    maybe_check_for_updates
 
     # No command = quick scan (best first-run experience)
     if [[ -z "$command" ]]; then
@@ -237,7 +259,12 @@ main() {
                     scan) cmd_scan --help ;;
                     plan) cmd_plan_help ;;
                     fix) cmd_fix --help ;;
-                    *) print_error "Unknown command: ${args[0]}"; show_usage; exit 1 ;;
+                    update) cmd_update_help ;;
+                    *)
+                        print_error "Unknown command: ${args[0]}"
+                        suggest_correction "${args[0]}" "commands" clean disk dev diagnose packages wsl scan plan fix update
+                        exit 1
+                        ;;
                 esac
             else
                 show_usage
@@ -271,10 +298,12 @@ main() {
         fix)
             cmd_fix "${args[@]+"${args[@]}"}" || exit_code=$?
             ;;
+        update)
+            cmd_update "${args[@]+"${args[@]}"}" || exit_code=$?
+            ;;
         *)
             print_error "Unknown command: $command"
-            echo ""
-            show_usage
+            suggest_correction "$command" "commands" clean disk dev diagnose packages wsl scan plan fix update
             exit 1
             ;;
     esac

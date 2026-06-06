@@ -5,14 +5,26 @@
 # Note: set -euo pipefail is set in main script, not here to allow sourcing
 
 # ── Colors ──────────────────────────────────────────────────────────
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-DIM='\033[2m'
-NC='\033[0m' # No Color
+# Respect NO_COLOR (https://no-color.org/) and non-TTY output
+_init_colors() {
+    if [[ -n "${NO_COLOR:-}" ]] || [[ "${WSLMOLE_NO_COLOR:-}" == "1" ]] || [[ ! -t 1 ]]; then
+        RED='' GREEN='' YELLOW='' BLUE='' CYAN='' MAGENTA='' WHITE=''
+        BOLD='' DIM='' ITALIC='' NC=''
+    else
+        RED='\033[0;31m'
+        GREEN='\033[0;32m'
+        YELLOW='\033[1;33m'
+        BLUE='\033[0;34m'
+        CYAN='\033[0;36m'
+        MAGENTA='\033[0;35m'
+        WHITE='\033[1;37m'
+        BOLD='\033[1m'
+        DIM='\033[2m'
+        ITALIC='\033[3m'
+        NC='\033[0m'
+    fi
+}
+_init_colors
 
 # ── Global State ────────────────────────────────────────────────────
 WSLMOLE_VERSION="1.0.0"
@@ -20,7 +32,7 @@ WSLMOLE_LOG_DIR="${HOME}/.local/share/wslmole"
 WSLMOLE_LOG_FILE="${WSLMOLE_LOG_DIR}/wslmole.log"
 WSLMOLE_CONFIG_FILE="${HOME}/.config/wslmole/config"
 WSLMOLE_LOG_LEVEL="INFO"
-DRY_RUN=false
+DRY_RUN=true
 FORCE=false
 VERBOSE=false
 
@@ -33,28 +45,44 @@ PROTECTED_PATHS=(
 )
 
 # ── Configuration ───────────────────────────────────────────────────
-VALID_CONFIG_KEYS="DRY_RUN FORCE VERBOSE WSLMOLE_LOG_LEVEL WSLMOLE_PROTECTED_PATHS_EXTRA"
+VALID_CONFIG_KEYS="DRY_RUN FORCE VERBOSE WSLMOLE_LOG_LEVEL WSLMOLE_UPDATE_INTERVAL"
 
 load_config() {
     [[ -f "$WSLMOLE_CONFIG_FILE" ]] || return 0
-    # Warn on unknown keys
     local line_num=0
     while IFS= read -r line || [[ -n "$line" ]]; do
         line_num=$((line_num + 1))
+        # Skip comments and blank lines
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
         [[ "$line" =~ ^[[:space:]]*$ ]] && continue
-        local key="${line%%=*}"
-        key="${key%%[*}"
-        key="$(echo "$key" | tr -d '[:space:]')"
+        # Require strict KEY=VALUE format (no shell commands, no spaces in key)
+        if [[ ! "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+            log_warn "Malformed config line $line_num in $WSLMOLE_CONFIG_FILE (skipped)"
+            continue
+        fi
+        local key="${BASH_REMATCH[1]}"
+        local val="${BASH_REMATCH[2]}"
+        # Strip surrounding quotes from value
+        val="${val#\"}" ; val="${val%\"}"
+        val="${val#\'}" ; val="${val%\'}"
         if [[ ! " $VALID_CONFIG_KEYS " =~ [[:space:]]${key}[[:space:]] ]]; then
             log_warn "Unknown config key '$key' at line $line_num in $WSLMOLE_CONFIG_FILE"
+            continue
         fi
+        # Validate value contains no command substitution or semicolons
+        if [[ "$val" =~ [\$\;\`\|] ]]; then
+            log_warn "Unsafe characters in value for '$key' at line $line_num (skipped)"
+            continue
+        fi
+        # Assign only known keys
+        case "$key" in
+            DRY_RUN)       [[ "$val" =~ ^(true|false)$ ]] && DRY_RUN="$val" ;;
+            FORCE)         [[ "$val" =~ ^(true|false)$ ]] && FORCE="$val" ;;
+            VERBOSE)       [[ "$val" =~ ^(true|false)$ ]] && VERBOSE="$val" ;;
+            WSLMOLE_LOG_LEVEL) [[ "$val" =~ ^(DEBUG|INFO|WARN|ERROR)$ ]] && WSLMOLE_LOG_LEVEL="$val" ;;
+            WSLMOLE_UPDATE_INTERVAL) [[ "$val" =~ ^[0-9]+$ ]] && WSLMOLE_UPDATE_INTERVAL="$val" ;;
+        esac
     done < "$WSLMOLE_CONFIG_FILE"
-    # shellcheck source=/dev/null
-    source "$WSLMOLE_CONFIG_FILE"
-    if [[ -n "${WSLMOLE_PROTECTED_PATHS_EXTRA:-}" ]]; then
-        PROTECTED_PATHS+=("${WSLMOLE_PROTECTED_PATHS_EXTRA[@]}")
-    fi
 }
 
 # ── Output Helpers ──────────────────────────────────────────────────
@@ -92,11 +120,11 @@ show_progress() {
     local chars="/-\|"
     local i=0
     while kill -0 "$pid" 2>/dev/null; do
-        printf "\r  %s " "${chars:$i:1}"
+        printf "\r\033[K  %s " "${chars:$i:1}"
         i=$(( (i + 1) % 4 ))
         sleep 0.1
     done
-    printf "\r"
+    printf "\r\033[K"
 }
 
 # ── JSON Output ─────────────────────────────────────────────────────
@@ -127,6 +155,9 @@ to_json_kv() {
         else
             val="${val//\\/\\\\}"
             val="${val//\"/\\\"}"
+            val="${val//$'\n'/\\n}"
+            val="${val//$'\t'/\\t}"
+            val="${val//$'\r'/\\r}"
             json+="\"${key}\":\"${val}\""
         fi
     done
@@ -276,6 +307,59 @@ log_error() {
 # Backward-compatible alias
 log() {
     log_info "$1"
+}
+
+# ── Suggestion Helpers ──────────────────────────────────────────────
+
+# Find closest match from a list using simple character overlap
+# Usage: suggest_match "typo" "valid1 valid2 valid3"
+suggest_match() {
+    local input="$1"
+    shift
+    local best="" best_score=0
+    for candidate in "$@"; do
+        local score=0 i=0
+        # Count matching characters in order (simple subsequence score)
+        local ci=0
+        while (( i < ${#input} && ci < ${#candidate} )); do
+            if [[ "${input:$i:1}" == "${candidate:$ci:1}" ]]; then
+                score=$((score + 1))
+                i=$((i + 1))
+            fi
+            ci=$((ci + 1))
+        done
+        # Bonus for matching prefix
+        local prefix_len=0
+        while (( prefix_len < ${#input} && prefix_len < ${#candidate} )) && \
+              [[ "${input:$prefix_len:1}" == "${candidate:$prefix_len:1}" ]]; do
+            prefix_len=$((prefix_len + 1))
+            score=$((score + 2))
+        done
+        if (( score > best_score )); then
+            best_score=$score
+            best="$candidate"
+        fi
+    done
+    # Only suggest if reasonably close (at least half the chars match)
+    local threshold=$(( ${#input} / 2 ))
+    (( threshold < 2 )) && threshold=2
+    if (( best_score >= threshold )) && [[ -n "$best" ]]; then
+        echo "$best"
+    fi
+}
+
+# Print "did you mean?" suggestion and list valid values
+# Usage: suggest_correction "typo" "context" valid1 valid2 valid3
+suggest_correction() {
+    local input="$1"
+    local context="$2"
+    shift 2
+    local match
+    match=$(suggest_match "$input" "$@")
+    if [[ -n "$match" ]]; then
+        print_info "Did you mean '${match}'?"
+    fi
+    print_info "Valid ${context}: $*"
 }
 
 # ── Safe Deletion ───────────────────────────────────────────────────

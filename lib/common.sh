@@ -27,7 +27,7 @@ _init_colors() {
 _init_colors
 
 # ── Global State ────────────────────────────────────────────────────
-WSLMOLE_VERSION="1.0.0"
+WSLMOLE_VERSION="2.0.0"
 WSLMOLE_LOG_DIR="${HOME}/.local/share/wslmole"
 WSLMOLE_LOG_FILE="${WSLMOLE_LOG_DIR}/wslmole.log"
 WSLMOLE_CONFIG_FILE="${HOME}/.config/wslmole/config"

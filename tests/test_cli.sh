@@ -32,8 +32,7 @@ else
 fi
 
 # Test 2: --version exits 0 and contains WSLMole
-output=$("$WSLMOLE" --version 2>&1)
-if [[ $? -eq 0 ]] && echo "$output" | grep -q "WSLMole"; then
+if output=$("$WSLMOLE" --version 2>&1) && echo "$output" | grep -q "WSLMole"; then
     pass "--version exits 0 and contains WSLMole"
 else
     fail "--version exits 0 and contains WSLMole"
@@ -259,7 +258,7 @@ fi
 
 # Test 30: NO_COLOR disables ANSI codes
 output=$(NO_COLOR=1 "$WSLMOLE" --help 2>&1)
-if echo "$output" | grep -qP '\033\['; then
+if printf '%s' "$output" | grep -q $'\033\['; then
     fail "NO_COLOR should strip ANSI codes"
 else
     pass "NO_COLOR strips ANSI codes"

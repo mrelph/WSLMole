@@ -23,23 +23,31 @@ run_test_suite() {
     echo "Running $test_name..."
     echo "----------------------------------------"
 
-    local output
+    local output suite_ok=true
     if output=$(bash "$test_file" 2>&1); then
         echo "$output"
-        SUITES_PASSED=$((SUITES_PASSED + 1))
     else
         echo "$output"
-        SUITES_FAILED=$((SUITES_FAILED + 1))
+        suite_ok=false
     fi
 
-    # Parse individual test counts from suite output
+    # Parse individual test counts from suite output (portable: no grep -P)
     local suite_run suite_passed suite_failed
-    suite_run=$(echo "$output" | grep -oP 'Tests run: \K[0-9]+' || echo 0)
-    suite_passed=$(echo "$output" | grep -oP 'Passed: \K[0-9]+' || echo 0)
-    suite_failed=$(echo "$output" | grep -oP 'Failed: \K[0-9]+' || echo 0)
-    TOTAL_TESTS=$((TOTAL_TESTS + suite_run))
-    TOTAL_PASSED=$((TOTAL_PASSED + suite_passed))
-    TOTAL_FAILED=$((TOTAL_FAILED + suite_failed))
+    suite_run=$(printf '%s\n' "$output" | sed -n 's/^Tests run: \([0-9][0-9]*\)$/\1/p' | tail -1)
+    suite_passed=$(printf '%s\n' "$output" | sed -n 's/^Passed: \([0-9][0-9]*\)$/\1/p' | tail -1)
+    suite_failed=$(printf '%s\n' "$output" | sed -n 's/^Failed: \([0-9][0-9]*\)$/\1/p' | tail -1)
+    if [[ -z "$suite_run" ]]; then
+        echo "⚠ $test_name did not print a test summary (suite aborted early?)"
+        suite_ok=false
+    fi
+    if [[ "$suite_ok" == true ]]; then
+        SUITES_PASSED=$((SUITES_PASSED + 1))
+    else
+        SUITES_FAILED=$((SUITES_FAILED + 1))
+    fi
+    TOTAL_TESTS=$((TOTAL_TESTS + ${suite_run:-0}))
+    TOTAL_PASSED=$((TOTAL_PASSED + ${suite_passed:-0}))
+    TOTAL_FAILED=$((TOTAL_FAILED + ${suite_failed:-0}))
     echo ""
 }
 

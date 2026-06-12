@@ -17,6 +17,14 @@ echo "Running WSLMole Safety Tests"
 echo "============================="
 echo ""
 
+# These tests deliberately call safe_delete with DRY_RUN=false against real
+# system paths to prove the guard blocks them. Never run them as root: a
+# guard regression must not be able to delete anything that matters.
+if [[ $EUID -eq 0 ]]; then
+    echo "✗ Refusing to run safety tests as root"
+    exit 1
+fi
+
 # Test 1: Protected paths cannot be deleted
 echo "Test 1: Protected paths are blocked"
 TESTS_RUN=$((TESTS_RUN + 1))

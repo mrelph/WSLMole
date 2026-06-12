@@ -31,14 +31,14 @@ assert_equals() {
     fi
 }
 
-assert_true() {
+record_pass() {
     local test_name="$1"
     TESTS_RUN=$((TESTS_RUN + 1))
     TESTS_PASSED=$((TESTS_PASSED + 1))
     echo "✓ $test_name"
 }
 
-assert_false() {
+record_fail() {
     local test_name="$1"
     TESTS_RUN=$((TESTS_RUN + 1))
     TESTS_FAILED=$((TESTS_FAILED + 1))
@@ -65,60 +65,60 @@ test_format_size() {
     result=$(get_size_bytes "$size_test_file")
     rm -f "$size_test_file"
     if [[ "$result" =~ ^[0-9]+$ ]]; then
-        assert_true "get_size_bytes: emits one numeric value"
+        record_pass "get_size_bytes: emits one numeric value"
     else
-        assert_false "get_size_bytes: should emit one numeric value"
+        record_fail "get_size_bytes: should emit one numeric value"
     fi
 }
 
 test_is_protected_path() {
     if is_protected_path "/bin"; then
-        assert_true "is_protected_path: /bin is protected"
+        record_pass "is_protected_path: /bin is protected"
     else
-        assert_false "is_protected_path: /bin should be protected"
+        record_fail "is_protected_path: /bin should be protected"
     fi
 
     local resolved_bin
     resolved_bin=$(realpath /bin 2>/dev/null || echo /bin)
     if is_protected_path "$resolved_bin"; then
-        assert_true "is_protected_path: resolved /bin is protected"
+        record_pass "is_protected_path: resolved /bin is protected"
     else
-        assert_false "is_protected_path: resolved /bin should be protected"
+        record_fail "is_protected_path: resolved /bin should be protected"
     fi
     
     if is_protected_path "/tmp/test"; then
-        assert_false "is_protected_path: /tmp/test should not be protected"
+        record_fail "is_protected_path: /tmp/test should not be protected"
     else
-        assert_true "is_protected_path: /tmp/test is not protected"
+        record_pass "is_protected_path: /tmp/test is not protected"
     fi
     
     if is_protected_path "/"; then
-        assert_true "is_protected_path: / is protected"
+        record_pass "is_protected_path: / is protected"
     else
-        assert_false "is_protected_path: / should be protected"
+        record_fail "is_protected_path: / should be protected"
     fi
 }
 
 test_validate_path() {
     # Test suspicious patterns
     if validate_path "../../etc/passwd" 2>/dev/null; then
-        assert_false "validate_path: should reject ../.."
+        record_fail "validate_path: should reject ../.."
     else
-        assert_true "validate_path: rejects ../.."
+        record_pass "validate_path: rejects ../.."
     fi
     
     # Test root path
     if validate_path "/" 2>/dev/null; then
-        assert_false "validate_path: should reject /"
+        record_fail "validate_path: should reject /"
     else
-        assert_true "validate_path: rejects /"
+        record_pass "validate_path: rejects /"
     fi
     
     # Test protected path
     if validate_path "/bin" 2>/dev/null; then
-        assert_false "validate_path: should reject /bin"
+        record_fail "validate_path: should reject /bin"
     else
-        assert_true "validate_path: rejects /bin"
+        record_pass "validate_path: rejects /bin"
     fi
 }
 
@@ -126,23 +126,23 @@ test_safe_delete() {
     # Test protected path blocking
     DRY_RUN=false
     if safe_delete "/bin" 2>/dev/null; then
-        assert_false "safe_delete: should block /bin"
+        record_fail "safe_delete: should block /bin"
     else
-        assert_true "safe_delete: blocks /bin"
+        record_pass "safe_delete: blocks /bin"
     fi
     
     # Test relative path blocking
     if safe_delete "relative/path" 2>/dev/null; then
-        assert_false "safe_delete: should block relative paths"
+        record_fail "safe_delete: should block relative paths"
     else
-        assert_true "safe_delete: blocks relative paths"
+        record_pass "safe_delete: blocks relative paths"
     fi
     
     # Test suspicious pattern blocking
     if safe_delete "/tmp/../etc/passwd" 2>/dev/null; then
-        assert_false "safe_delete: should block .. patterns"
+        record_fail "safe_delete: should block .. patterns"
     else
-        assert_true "safe_delete: blocks .. patterns"
+        record_pass "safe_delete: blocks .. patterns"
     fi
 }
 

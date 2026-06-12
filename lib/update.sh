@@ -173,15 +173,39 @@ perform_update() {
         return 0
     fi
 
+    # Verify the remote is still the official repository
+    local origin_url
+    origin_url=$(git -C "$install_dir" remote get-url origin 2>/dev/null || echo "")
+    if [[ "$origin_url" != "$WSLMOLE_REPO_URL" && "$origin_url" != "${WSLMOLE_REPO_URL%.git}" ]]; then
+        print_warning "Git remote 'origin' is not the official WSLMole repository:"
+        print_item "$origin_url"
+        if ! confirm "Update from this remote anyway?"; then
+            print_info "Update cancelled"
+            return 1
+        fi
+    fi
+
+    # Verify the tag signature when one exists; warn loudly when it doesn't.
+    # Checked-out code is sourced on the next run, so this is code execution.
+    if git -C "$install_dir" verify-tag "$latest_tag" &>/dev/null; then
+        print_success "Tag ${latest_tag} has a valid GPG signature"
+    else
+        print_warning "Tag ${latest_tag} is not GPG-signed; its contents cannot be verified"
+    fi
+
     # Check for local modifications
+    local stashed=false
     if ! git -C "$install_dir" diff --quiet 2>/dev/null; then
         print_warning "You have local modifications"
         if ! confirm "Stash local changes and update?"; then
             print_info "Update cancelled"
             return 0
         fi
-        git -C "$install_dir" stash --quiet 2>/dev/null
-        local stashed=true
+        if git -C "$install_dir" stash --quiet 2>/dev/null; then
+            stashed=true
+        else
+            print_warning "Could not stash local changes; continuing without stash"
+        fi
     fi
 
     if ! confirm "Update to ${latest_tag}?"; then
@@ -192,7 +216,9 @@ perform_update() {
     # Checkout the tagged release
     if git -C "$install_dir" checkout "$latest_tag" --quiet 2>/dev/null; then
         local new_version
-        new_version=$(grep -oP 'WSLMOLE_VERSION="\K[^"]+' "$install_dir/lib/common.sh" 2>/dev/null || echo "$latest_version")
+        new_version=$(sed -n 's/^WSLMOLE_VERSION="\([^"]*\)".*/\1/p' "$install_dir/lib/common.sh" 2>/dev/null | head -1)
+        new_version="${new_version//[^0-9.]/}"
+        [[ -n "$new_version" ]] || new_version="$latest_version"
         print_success "Updated to v${new_version}"
         print_info "Note: repo is now at tag ${latest_tag} (detached HEAD)"
         print_info "To return to a branch: cd $install_dir && git checkout master"
@@ -204,7 +230,7 @@ perform_update() {
     fi
 
     # Restore stashed changes
-    if [[ "${stashed:-false}" == true ]]; then
+    if [[ "$stashed" == true ]]; then
         if git -C "$install_dir" stash pop --quiet 2>/dev/null; then
             print_info "Restored local modifications"
         else
@@ -272,9 +298,9 @@ _get_latest_tag() {
 # Compare two semver strings: returns 0 (true) if $1 > $2
 _version_gt() {
     local v1="$1" v2="$2"
-    # Split on dots
-    local IFS='.'
-    local -a parts1=($v1) parts2=($v2)
+    local -a parts1 parts2
+    IFS='.' read -ra parts1 <<< "$v1"
+    IFS='.' read -ra parts2 <<< "$v2"
     local i
     for i in 0 1 2; do
         local a="${parts1[$i]:-0}" b="${parts2[$i]:-0}"

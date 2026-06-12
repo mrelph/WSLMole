@@ -265,6 +265,11 @@ clean_snap() {
     fi
 
     echo "$disabled_snaps" | while read -r snap_name snap_rev; do
+        # Defense in depth: only pass plausible snap names/revisions to snap remove
+        if [[ ! "$snap_name" =~ ^[a-z0-9][a-z0-9-]*$ ]] || [[ ! "$snap_rev" =~ ^[0-9]+$ ]]; then
+            print_warning "Skipping unexpected snap entry: $snap_name $snap_rev"
+            continue
+        fi
         if confirm "Remove $snap_name revision $snap_rev?"; then
             if snap remove "$snap_name" --revision="$snap_rev" 2>/dev/null; then
                 print_success "Removed $snap_name revision $snap_rev"
@@ -284,26 +289,26 @@ clean_logs() {
     local log_dir="/var/log"
     local total_cleaned=0
 
-    # Find rotated logs
+    # Find rotated logs (NUL-delimited: filenames may contain newlines)
     print_info "Scanning for rotated log files..."
-    local rotated_files
-    rotated_files=$(find "$log_dir" -type f \( -name "*.gz" -o -name "*.old" -o -name "*.1" -o -name "*.2" -o -name "*.3" \) 2>/dev/null || true)
+    local -a rotated_files=()
+    local file
+    while IFS= read -r -d '' file; do
+        rotated_files+=("$file")
+    done < <(find "$log_dir" -type f \( -name "*.gz" -o -name "*.old" -o -name "*.1" -o -name "*.2" -o -name "*.3" \) -print0 2>/dev/null || true)
 
-    if [[ -n "$rotated_files" ]]; then
-        local count
-        count=$(echo "$rotated_files" | wc -l)
-        local total_size=0
-        while IFS= read -r file; do
-            local fsize
+    if [[ ${#rotated_files[@]} -gt 0 ]]; then
+        local total_size=0 fsize
+        for file in "${rotated_files[@]}"; do
             fsize=$(get_size_bytes "$file")
             total_size=$((total_size + fsize))
-        done <<< "$rotated_files"
+        done
 
-        print_info "Found $count rotated log files ($(format_size "$total_size"))"
+        print_info "Found ${#rotated_files[@]} rotated log files ($(format_size "$total_size"))"
 
-        while IFS= read -r file; do
+        for file in "${rotated_files[@]}"; do
             safe_delete "$file" "$(basename "$file")"
-        done <<< "$rotated_files"
+        done
     else
         print_success "No rotated log files found"
     fi
@@ -331,35 +336,36 @@ clean_logs() {
 clean_tmp() {
     print_header "Temp File Cleanup"
 
-    # /tmp - files older than 7 days
+    # /tmp - files older than 7 days (NUL-delimited)
     print_info "Scanning /tmp for files older than 7 days..."
-    local tmp_files
-    tmp_files=$(find /tmp -type f -mtime +7 2>/dev/null || true)
+    local -a tmp_files=()
+    local file
+    while IFS= read -r -d '' file; do
+        tmp_files+=("$file")
+    done < <(find /tmp -type f -mtime +7 -print0 2>/dev/null || true)
 
-    if [[ -n "$tmp_files" ]]; then
-        local count
-        count=$(echo "$tmp_files" | wc -l)
-        print_info "Found $count old files in /tmp"
-        while IFS= read -r file; do
+    if [[ ${#tmp_files[@]} -gt 0 ]]; then
+        print_info "Found ${#tmp_files[@]} old files in /tmp"
+        for file in "${tmp_files[@]}"; do
             safe_delete "$file" "/tmp/$(basename "$file")"
-        done <<< "$tmp_files"
+        done
     else
         print_success "No old files in /tmp"
     fi
 
-    # /var/tmp - files older than 7 days
+    # /var/tmp - files older than 7 days (NUL-delimited)
     echo ""
     print_info "Scanning /var/tmp for files older than 7 days..."
-    local var_tmp_files
-    var_tmp_files=$(find /var/tmp -type f -mtime +7 2>/dev/null || true)
+    local -a var_tmp_files=()
+    while IFS= read -r -d '' file; do
+        var_tmp_files+=("$file")
+    done < <(find /var/tmp -type f -mtime +7 -print0 2>/dev/null || true)
 
-    if [[ -n "$var_tmp_files" ]]; then
-        local count
-        count=$(echo "$var_tmp_files" | wc -l)
-        print_info "Found $count old files in /var/tmp"
-        while IFS= read -r file; do
+    if [[ ${#var_tmp_files[@]} -gt 0 ]]; then
+        print_info "Found ${#var_tmp_files[@]} old files in /var/tmp"
+        for file in "${var_tmp_files[@]}"; do
             safe_delete "$file" "/var/tmp/$(basename "$file")"
-        done <<< "$var_tmp_files"
+        done
     else
         print_success "No old files in /var/tmp"
     fi
@@ -476,8 +482,8 @@ clean_user() {
             print_info "[DRY RUN] Would empty trash"
         else
             if confirm "Empty trash?"; then
-                rm -rf "${trash_dir:?}/files"/* 2>/dev/null
-                rm -rf "${trash_dir:?}/info"/* 2>/dev/null
+                find "${trash_dir:?}/files" -mindepth 1 -delete 2>/dev/null
+                find "${trash_dir:?}/info" -mindepth 1 -delete 2>/dev/null
                 print_success "Trash emptied"
             else
                 print_info "Skipped trash cleanup"
@@ -509,18 +515,19 @@ clean_wsl() {
         return 0
     fi
 
-    # Clean WSL log files
+    # Clean WSL log files (NUL-delimited)
     print_info "Scanning for WSL log files..."
-    local wsl_logs
-    wsl_logs=$(find /var/log -maxdepth 1 -name "wsl*.log" -type f 2>/dev/null || true)
+    local -a wsl_logs=()
+    local logfile
+    while IFS= read -r -d '' logfile; do
+        wsl_logs+=("$logfile")
+    done < <(find /var/log -maxdepth 1 -name "wsl*.log" -type f -print0 2>/dev/null || true)
 
-    if [[ -n "$wsl_logs" ]]; then
-        local count
-        count=$(echo "$wsl_logs" | wc -l)
-        print_info "Found $count WSL log file(s)"
-        while IFS= read -r logfile; do
+    if [[ ${#wsl_logs[@]} -gt 0 ]]; then
+        print_info "Found ${#wsl_logs[@]} WSL log file(s)"
+        for logfile in "${wsl_logs[@]}"; do
             safe_delete "$logfile" "$(basename "$logfile")"
-        done <<< "$wsl_logs"
+        done
     else
         print_success "No WSL log files found"
     fi

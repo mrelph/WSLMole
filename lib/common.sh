@@ -36,12 +36,20 @@ DRY_RUN=true
 FORCE=false
 VERBOSE=false
 
-# Protected paths - NEVER delete these
+# Protected paths - NEVER delete these (exact match)
 PROTECTED_PATHS=(
     "/" "/bin" "/boot" "/dev" "/etc" "/home" "/lib" "/lib64"
     "/media" "/mnt" "/opt" "/proc" "/root" "/run" "/sbin"
     "/srv" "/sys" "/usr" "/var"
     "/usr/bin" "/usr/lib" "/usr/lib64" "/usr/sbin"
+)
+
+# System trees where nothing inside may be deleted either (prefix match).
+# /var, /tmp, /home etc. are deliberately absent: the tool legitimately
+# deletes children there (/var/log/*.gz, /tmp/*, ~/.cache).
+PROTECTED_PREFIXES=(
+    "/bin" "/sbin" "/boot" "/dev" "/etc" "/lib" "/lib64"
+    "/proc" "/sys" "/usr" "/run"
 )
 
 # ── Configuration ───────────────────────────────────────────────────
@@ -227,12 +235,17 @@ validate_path() {
 }
 
 is_protected_path() {
-    local input_path resolved_path protected resolved_protected
+    local input_path resolved_path protected resolved_protected prefix
     input_path=$(realpath -m "$1" 2>/dev/null || echo "$1")
     resolved_path=$(realpath "$input_path" 2>/dev/null || echo "$input_path")
     for protected in "${PROTECTED_PATHS[@]}"; do
         resolved_protected=$(realpath "$protected" 2>/dev/null || echo "$protected")
         if [[ "$input_path" == "$protected" || "$resolved_path" == "$resolved_protected" ]]; then
+            return 0
+        fi
+    done
+    for prefix in "${PROTECTED_PREFIXES[@]}"; do
+        if [[ "$input_path" == "$prefix/"* || "$resolved_path" == "$prefix/"* ]]; then
             return 0
         fi
     done

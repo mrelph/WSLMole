@@ -17,6 +17,14 @@ echo "Running WSLMole Safety Tests"
 echo "============================="
 echo ""
 
+# These tests deliberately call safe_delete with DRY_RUN=false against real
+# system paths to prove the guard blocks them. Never run them as root: a
+# guard regression must not be able to delete anything that matters.
+if [[ $EUID -eq 0 ]]; then
+    echo "✗ Refusing to run safety tests as root"
+    exit 1
+fi
+
 # Test 1: Protected paths cannot be deleted
 echo "Test 1: Protected paths are blocked"
 TESTS_RUN=$((TESTS_RUN + 1))
@@ -90,6 +98,35 @@ if [[ ! -f "$TEST_FILE" ]]; then
     TESTS_PASSED=$((TESTS_PASSED + 1))
 else
     echo "✗ Safe file was not deleted"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    rm -f "$TEST_FILE"
+fi
+
+# Test 7: Children of protected system trees are blocked (prefix protection)
+echo "Test 7: Children of protected system trees are blocked"
+for sys_child in "/usr/local/bin" "/etc/passwd" "/usr/bin/env" "/boot/grub"; do
+    TESTS_RUN=$((TESTS_RUN + 1))
+    if safe_delete "$sys_child" "test" 2>/dev/null; then
+        echo "✗ CRITICAL: $sys_child was not blocked!"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+    else
+        echo "✓ $sys_child is protected"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+    fi
+done
+
+# Test 8: Children of /tmp and /var/log remain deletable (no over-blocking)
+echo "Test 8: /tmp children are still deletable"
+TESTS_RUN=$((TESTS_RUN + 1))
+TEST_FILE="/tmp/wslmole_test_prefix_$$"
+touch "$TEST_FILE"
+export DRY_RUN=false
+safe_delete "$TEST_FILE" "test" >/dev/null 2>&1
+if [[ ! -f "$TEST_FILE" ]]; then
+    echo "✓ /tmp child deleted (prefix rules do not over-block)"
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+    echo "✗ /tmp child was over-blocked"
     TESTS_FAILED=$((TESTS_FAILED + 1))
     rm -f "$TEST_FILE"
 fi

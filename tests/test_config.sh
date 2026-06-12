@@ -31,15 +31,12 @@ load_config
 [[ "$DRY_RUN" == "true" ]] && pass "config sets DRY_RUN" || fail "config sets DRY_RUN"
 DRY_RUN=false
 
-# Test 3: Config adds protected paths
+# Test 3: Config rejects unsafe values
 WSLMOLE_CONFIG_FILE="$TEST_DIR/config2"
-echo 'WSLMOLE_PROTECTED_PATHS_EXTRA=("/my/custom/path")' > "$WSLMOLE_CONFIG_FILE"
-load_config
-found=false
-for p in "${PROTECTED_PATHS[@]}"; do
-    [[ "$p" == "/my/custom/path" ]] && found=true
-done
-[[ "$found" == "true" ]] && pass "config adds protected paths" || fail "config adds protected paths"
+echo 'DRY_RUN=$(rm -rf /)' > "$WSLMOLE_CONFIG_FILE"
+DRY_RUN=true
+load_config 2>/dev/null
+[[ "$DRY_RUN" == "true" ]] && pass "config rejects unsafe values" || fail "config rejects unsafe values"
 
 # Test 4: Config sets log level
 WSLMOLE_CONFIG_FILE="$TEST_DIR/config3"

@@ -158,7 +158,7 @@ plan_collect() {
 
     if is_wsl; then
         local win_user
-        win_user=$(cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r\n' || true)
+        win_user=$(get_windows_username)
         if [[ -n "$win_user" ]] && [[ ! -f "/mnt/c/Users/${win_user}/.wslconfig" ]]; then
             _plan_add_item "Add a WSL memory limit" "review" "No .wslconfig found; WSL2 may use more memory than expected." "wslmole wsl info" "false" "wslconfig"
         fi

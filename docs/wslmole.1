@@ -1,5 +1,5 @@
 .\" WSLMole man page
-.TH WSLMOLE 1 "February 2026" "WSLMole 1.0.0" "User Commands"
+.TH WSLMOLE 1 "June 2026" "WSLMole 2.0.0" "User Commands"
 .SH NAME
 wslmole \- WSL system optimization tool
 .SH SYNOPSIS
@@ -51,6 +51,10 @@ actions.
 .TP
 .B fix
 Preview and apply low-risk cleanup actions from the action plan.
+.TP
+.B update \fR[\fIoptions\fR]
+Check for and install new releases from the Git repository. Compares the
+current version against published Git tags (v*).
 .SH GLOBAL OPTIONS
 .TP
 .BR \-i ", " \-\-interactive
@@ -68,8 +72,13 @@ Output format:
 (default) or
 .BR json .
 .TP
-.B \-\-yes
-Skip all confirmation prompts.
+.BR \-y ", " \-\-yes
+Execute changes (disables dry-run) and skip confirmation prompts.
+.TP
+.B \-\-no\-color
+Disable colored output. Also respects the
+.B NO_COLOR
+environment variable.
 .TP
 .BR \-h ", " \-\-help
 Show help message.
@@ -77,12 +86,13 @@ Show help message.
 .B \-\-version
 Show version number.
 .SH CLEAN OPTIONS
+.PP
+All cleanup commands run in dry-run mode by default. Use
+.B \-\-yes
+to execute changes.
 .TP
 .BR \-n ", " \-\-dry\-run
-Preview what would be cleaned without deleting anything.
-.TP
-.BR \-f ", " \-\-force
-Skip all confirmation prompts.
+Preview what would be cleaned (default).
 .TP
 .BI \-c ", " \-\-category " LIST"
 Comma-separated list of categories to clean:
@@ -98,15 +108,12 @@ Default:
 .BI \-d ", " \-\-depth " N"
 Tree depth for tree mode. Default: 3.
 .TP
-.BI \-n ", " \-\-top " N"
+.BI \-N ", " \-\-top " N"
 Number of results to show. Default: 10.
 .SH DEV OPTIONS
 .TP
 .BR \-n ", " \-\-dry\-run
-Preview artifacts without deleting.
-.TP
-.BR \-f ", " \-\-force
-Skip confirmation prompts.
+Preview artifacts without deleting (default).
 .TP
 .BI \-t ", " \-\-types " LIST"
 Comma-separated artifact types:
@@ -186,6 +193,10 @@ Apply only the comma-separated automatic categories in LIST, such as
 .TP
 .BR fix " " \-\-yes
 Applies low-risk cleanup actions without prompting.
+.SH UPDATE OPTIONS
+.TP
+.BR \-c ", " \-\-check
+Check for updates without installing.
 .SH EXAMPLES
 .TP
 Run a quick health scan:
@@ -222,7 +233,7 @@ Clean APT and log files only:
 .B wslmole clean \-c apt,logs
 .TP
 Find 20 largest files in home directory:
-.B wslmole disk ~ \-m files \-n 20
+.B wslmole disk ~ \-m files \-N 20
 .TP
 Clean old developer artifacts:
 .B wslmole dev ~/projects \-\-older\-than 30
@@ -232,7 +243,8 @@ Clean old developer artifacts:
 Log file (when \-\-verbose is enabled). Rotated at 1MB.
 .TP
 .I ~/.config/wslmole/config
-Optional configuration file sourced at startup.
+Optional configuration file (KEY=VALUE format). Supports:
+DRY_RUN, FORCE, VERBOSE, WSLMOLE_LOG_LEVEL, WSLMOLE_UPDATE_INTERVAL.
 .SH EXIT STATUS
 .TP
 .B 0

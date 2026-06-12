@@ -24,10 +24,6 @@ cmd_dev() {
                 DRY_RUN=true
                 shift
                 ;;
-            -f|--force)
-                FORCE=true
-                shift
-                ;;
             -t|--types)
                 if [[ -z "${2:-}" ]]; then
                     print_error "--types requires a comma-separated list"

@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [ master, main, develop ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ master, main ]
 
@@ -29,7 +30,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y bc
-      
+
       - name: Run test suite
         run: |
           chmod +x tests/*.sh wslmole lint.sh
@@ -47,8 +48,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc
-      
+          sudo apt-get install -y bc mandoc
+
       - name: Test CLI commands
         run: |
           chmod +x wslmole
@@ -60,7 +61,30 @@ jobs:
           ./wslmole dev --help
           ./wslmole diagnose --help
           ./wslmole packages --help
+          ./wslmole scan --help
+          ./wslmole plan --help
+          ./wslmole fix --help
           ./wslmole wsl --help || true  # May fail if not in WSL
+          ./wslmole update --help
+          ./wslmole update --check || true  # May fail outside git repo context
 
       - name: Verify man page
         run: mandoc docs/wslmole.1 > /dev/null
+
+  release:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [shellcheck, test, smoke-test]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "WSLMole ${GITHUB_REF_NAME}" \
+            --generate-notes

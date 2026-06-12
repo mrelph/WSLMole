@@ -356,8 +356,7 @@ diagnose_wsl_resources() {
     echo ""
 
     local win_username
-    # Get Windows username via cmd.exe
-    win_username=$(cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r\n' || true)
+    win_username=$(get_windows_username)
 
     if [[ -n "$win_username" ]]; then
         local wslconfig="/mnt/c/Users/${win_username}/.wslconfig"

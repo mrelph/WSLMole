@@ -21,6 +21,7 @@ WSLMole is a terminal-based system optimization tool built for WSL2 (Windows Sub
 - **WSL Tools** -- memory/swap configuration, Windows interop status, filesystem performance, and distro management
 - **Quick Scan** -- one-command health check with a 0-100 score, cleanable-space summary, and actionable recommendations
 - **Action Plan** -- risk-labeled recommendations with suggested commands and safe auto-fix actions
+- **Auto-Update** -- checks for new releases from Git tags, with periodic background checks
 - **Interactive CLI** -- inline Bash menu system with looping submenus for every module
 
 ---
@@ -99,6 +100,7 @@ Find large files, stale data, and filesystem hogs.
 wslmole disk            # filesystem summary
 wslmole disk large      # list largest files
 wslmole disk usage      # filesystem usage overview
+wslmole disk -m old ~   # find old files in home
 ```
 
 ### dev -- Developer Cleanup
@@ -141,6 +143,17 @@ wslmole wsl memory      # check/configure WSL memory limits
 wslmole wsl interop     # Windows interop status
 ```
 
+### update -- Auto-Update
+
+Check for and install new releases from the Git repository.
+
+```bash
+wslmole update          # check and install latest release
+wslmole update --check  # check only, don't install
+```
+
+WSLMole checks for new tagged releases (`v*`) automatically every 24 hours. The check runs in the background and prints a hint if a new version is available.
+
 ---
 
 ## Interactive Mode
@@ -157,6 +170,7 @@ Running `wslmole` with no arguments starts a quick health scan. Use `wslmole -i`
 7) WSL Tools
 8) Quick Scan
 9) Auto-Fix
+10) Check for Updates
 0) Exit
 ```
 
@@ -190,7 +204,7 @@ Each option opens an inline submenu that loops until you return to the main menu
 
 ## Safety Features
 
-- **Dry-run mode** -- preview what would be removed before committing
+- **Dry-run by default** -- all destructive commands preview changes first; use `--yes` to apply
 - **Protected paths** -- critical system directories are never touched
 - **Root detection** -- warns and adjusts behavior when running as root
 - **Confirmation prompts** -- destructive actions require explicit approval

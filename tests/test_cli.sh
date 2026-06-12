@@ -32,8 +32,7 @@ else
 fi
 
 # Test 2: --version exits 0 and contains WSLMole
-output=$("$WSLMOLE" --version 2>&1)
-if [[ $? -eq 0 ]] && echo "$output" | grep -q "WSLMole"; then
+if output=$("$WSLMOLE" --version 2>&1) && echo "$output" | grep -q "WSLMole"; then
     pass "--version exits 0 and contains WSLMole"
 else
     fail "--version exits 0 and contains WSLMole"
@@ -255,6 +254,64 @@ elif [[ "$fix_json" == \{* ]]; then
     pass "fix JSON stdout starts with JSON"
 else
     fail "fix JSON stdout starts with JSON"
+fi
+
+# Test 30: NO_COLOR disables ANSI codes
+output=$(NO_COLOR=1 "$WSLMOLE" --help 2>&1)
+if printf '%s' "$output" | grep -q $'\033\['; then
+    fail "NO_COLOR should strip ANSI codes"
+else
+    pass "NO_COLOR strips ANSI codes"
+fi
+
+# Test 31: --format=json works (equals syntax)
+if "$WSLMOLE" --format=json --version >/dev/null 2>&1; then
+    pass "--format=json works"
+else
+    fail "--format=json works"
+fi
+
+# Test 32: --yes flag accepted
+if "$WSLMOLE" --yes --help >/dev/null 2>&1; then
+    pass "--yes flag accepted"
+else
+    fail "--yes flag accepted"
+fi
+
+# Test 33: typo suggests closest command
+output=$("$WSLMOLE" cleam 2>&1 || true)
+if echo "$output" | grep -qi "did you mean"; then
+    pass "typo correction suggests closest match"
+else
+    fail "typo correction suggests closest match"
+fi
+
+# Test 34: update --help exits 0
+if "$WSLMOLE" update --help >/dev/null 2>&1; then
+    pass "update --help exits 0"
+else
+    fail "update --help exits 0"
+fi
+
+# Test 35: fix rejects unknown options
+if "$WSLMOLE" fix --bogus-flag >/dev/null 2>&1; then
+    fail "fix --bogus-flag should exit non-zero"
+else
+    pass "fix --bogus-flag exits non-zero"
+fi
+
+# Test 36: no-command JSON mode emits clean parseable stdout
+nocmd_json=$("$WSLMOLE" --format json 2>/dev/null)
+if command -v python3 >/dev/null 2>&1; then
+    if printf '%s\n' "$nocmd_json" | python3 -m json.tool >/dev/null 2>&1; then
+        pass "no-command JSON stdout is parseable"
+    else
+        fail "no-command JSON stdout is parseable"
+    fi
+elif [[ "$nocmd_json" == \{* ]]; then
+    pass "no-command JSON stdout starts with JSON"
+else
+    fail "no-command JSON stdout starts with JSON"
 fi
 
 echo ""

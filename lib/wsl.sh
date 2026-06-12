@@ -91,8 +91,9 @@ cmd_wsl_action() {
 }
 
 # ── Helper: Get Windows Username ──────────────────────────────────
+# Thin alias kept for existing call sites; validation lives in common.sh
 _get_win_username() {
-    cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r\n' || true
+    get_windows_username
 }
 
 # ── Helper: Get Distro Name ──────────────────────────────────────

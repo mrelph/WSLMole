@@ -196,13 +196,14 @@ _menu_clean_confirm() {
     local prev_dry_run="$DRY_RUN"
     DRY_RUN=true
     cmd_clean_category "$category"
-    DRY_RUN="$prev_dry_run"
     echo ""
     if _menu_yesno "Proceed with ${category} cleanup?"; then
+        DRY_RUN=false
         cmd_clean_category "$category"
     else
         print_info "Cleanup cancelled."
     fi
+    DRY_RUN="$prev_dry_run"
     press_enter
 }
 
@@ -236,15 +237,19 @@ menu_dev() {
     local path
     path=$(_menu_input "Project path to scan" "$HOME")
 
+    local prev_dry_run="$DRY_RUN"
     print_header "Developer Cleanup Preview"
-    DRY_RUN=true cmd_dev_scan "$path"
+    DRY_RUN=true
+    cmd_dev_scan "$path"
     echo ""
 
     if _menu_yesno "Proceed with cleanup?"; then
+        DRY_RUN=false
         cmd_dev_scan "$path"
     else
         print_info "Cleanup cancelled."
     fi
+    DRY_RUN="$prev_dry_run"
     press_enter
 }
 

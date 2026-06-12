@@ -294,6 +294,27 @@ else
     fail "update --help exits 0"
 fi
 
+# Test 35: fix rejects unknown options
+if "$WSLMOLE" fix --bogus-flag >/dev/null 2>&1; then
+    fail "fix --bogus-flag should exit non-zero"
+else
+    pass "fix --bogus-flag exits non-zero"
+fi
+
+# Test 36: no-command JSON mode emits clean parseable stdout
+nocmd_json=$("$WSLMOLE" --format json 2>/dev/null)
+if command -v python3 >/dev/null 2>&1; then
+    if printf '%s\n' "$nocmd_json" | python3 -m json.tool >/dev/null 2>&1; then
+        pass "no-command JSON stdout is parseable"
+    else
+        fail "no-command JSON stdout is parseable"
+    fi
+elif [[ "$nocmd_json" == \{* ]]; then
+    pass "no-command JSON stdout starts with JSON"
+else
+    fail "no-command JSON stdout starts with JSON"
+fi
+
 echo ""
 echo "========================="
 echo "Tests run: $TESTS_RUN"

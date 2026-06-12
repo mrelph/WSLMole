@@ -89,7 +89,7 @@ cmd_fix() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -n|--dry-run) DRY_RUN=true; shift ;;
-            --yes) FORCE=true; shift ;;
+            --yes) FORCE=true; DRY_RUN=false; shift ;;
             --only)
                 if [[ -z "${2:-}" ]]; then
                     print_error "--only requires a comma-separated category list"
@@ -110,7 +110,10 @@ cmd_fix() {
                 echo "  -h, --help       Show this help"
                 return 0
                 ;;
-            *) shift ;;
+            *)
+                print_error "Unknown option: $1"
+                return 1
+                ;;
         esac
     done
 
@@ -236,16 +239,16 @@ main() {
     # Periodic update check (background, non-blocking)
     maybe_check_for_updates
 
-    # No command = quick scan (best first-run experience)
-    if [[ -z "$command" ]]; then
-        run_quick_scan
-        exit 0
-    fi
-
     if [[ "$FORMAT" == "json" ]]; then
         exec 3>&1
         JSON_STDOUT_FD=3
         exec 1>&2
+    fi
+
+    # No command = quick scan (best first-run experience)
+    if [[ -z "$command" ]]; then
+        run_quick_scan
+        exit 0
     fi
 
     # Dispatch to module

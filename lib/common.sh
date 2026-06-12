@@ -252,6 +252,18 @@ is_protected_path() {
     return 1
 }
 
+# Windows username via interop, validated before use in path construction.
+# Returns empty if interop is unavailable or the name contains unsafe chars.
+get_windows_username() {
+    local name
+    name=$(cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r\n' || true)
+    if [[ -n "$name" && ! "$name" =~ ^[A-Za-z0-9][A-Za-z0-9\ ._-]*$ ]]; then
+        log_warn "Ignoring Windows username with unexpected characters"
+        name=""
+    fi
+    printf '%s' "$name"
+}
+
 is_root() {
     [[ $EUID -eq 0 ]]
 }

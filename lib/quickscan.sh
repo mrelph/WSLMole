@@ -118,7 +118,7 @@ MOLE
     local has_wslconfig=false
     if is_wsl; then
         local win_username
-        win_username=$(cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r\n' || true)
+        win_username=$(get_windows_username)
         if [[ -n "$win_username" ]]; then
             local wslconfig="/mnt/c/Users/${win_username}/.wslconfig"
             if [[ -f "$wslconfig" ]]; then

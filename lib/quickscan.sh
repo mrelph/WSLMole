@@ -4,6 +4,60 @@
 
 # Note: Strict mode set in main script
 
+# ── Health Score (pure) ───────────────────────────────────────────
+# Compute the health score and recommendations from already-collected
+# metrics. Kept free of system calls so the scoring arithmetic, clamping,
+# and thresholds are unit-testable in isolation.
+#
+# Results are returned via two globals (bash arrays can't be returned):
+#   QS_HEALTH_SCORE        - integer score, clamped to a 0 minimum
+#   QS_RECOMMENDATIONS      - array of recommendation strings
+QS_HEALTH_SCORE=100
+QS_RECOMMENDATIONS=()
+_quickscan_compute_score() {
+    local mem_percentage="$1" disk_percentage="$2" failed_count="$3" \
+          has_wslconfig="$4" in_wsl="$5" upgradable_count="$6"
+
+    QS_HEALTH_SCORE=100
+    QS_RECOMMENDATIONS=()
+
+    if [[ $mem_percentage -ge 80 ]]; then
+        QS_HEALTH_SCORE=$((QS_HEALTH_SCORE - 15))
+        QS_RECOMMENDATIONS+=("Memory usage is critically high (${mem_percentage}%) - close unused applications")
+    elif [[ $mem_percentage -ge 60 ]]; then
+        QS_HEALTH_SCORE=$((QS_HEALTH_SCORE - 5))
+        QS_RECOMMENDATIONS+=("Memory usage is elevated (${mem_percentage}%) - consider freeing some memory")
+    fi
+
+    if [[ $disk_percentage -ge 90 ]]; then
+        QS_HEALTH_SCORE=$((QS_HEALTH_SCORE - 20))
+        QS_RECOMMENDATIONS+=("Disk usage is critical (${disk_percentage}%) - run 'wslmole clean' to free space")
+    elif [[ $disk_percentage -ge 75 ]]; then
+        QS_HEALTH_SCORE=$((QS_HEALTH_SCORE - 10))
+        QS_RECOMMENDATIONS+=("Disk usage is high (${disk_percentage}%) - consider running 'wslmole clean'")
+    fi
+
+    if [[ $failed_count -gt 0 ]]; then
+        QS_HEALTH_SCORE=$((QS_HEALTH_SCORE - failed_count * 5))
+        QS_RECOMMENDATIONS+=("${failed_count} failed systemd service(s) - run 'wslmole diagnose service' to investigate")
+    fi
+
+    if [[ "$in_wsl" == true && "$has_wslconfig" == false ]]; then
+        QS_HEALTH_SCORE=$((QS_HEALTH_SCORE - 5))
+        QS_RECOMMENDATIONS+=("No .wslconfig found - create one to limit WSL2 memory/CPU usage")
+    fi
+
+    if [[ $upgradable_count -gt 10 ]]; then
+        QS_HEALTH_SCORE=$((QS_HEALTH_SCORE - 5))
+        QS_RECOMMENDATIONS+=("${upgradable_count} packages can be upgraded - run 'wslmole packages update'")
+    fi
+
+    # Clamp score to 0 minimum
+    if [[ $QS_HEALTH_SCORE -lt 0 ]]; then
+        QS_HEALTH_SCORE=0
+    fi
+}
+
 # ── Quick Scan ────────────────────────────────────────────────────
 run_quick_scan() {
     # ASCII art mole (text mode only)
@@ -85,38 +139,19 @@ MOLE
     disk_avail=$(df -h / 2>/dev/null | awk 'NR==2 {print $4}')
 
     # ── Health Score Calculation ──────────────────────────────────
-
-    local health_score=100
-    local -a recommendations=()
-
-    if [[ $mem_percentage -ge 80 ]]; then
-        health_score=$((health_score - 15))
-        recommendations+=("Memory usage is critically high (${mem_percentage}%) - close unused applications")
-    elif [[ $mem_percentage -ge 60 ]]; then
-        health_score=$((health_score - 5))
-        recommendations+=("Memory usage is elevated (${mem_percentage}%) - consider freeing some memory")
-    fi
-
-    if [[ $disk_percentage -ge 90 ]]; then
-        health_score=$((health_score - 20))
-        recommendations+=("Disk usage is critical (${disk_percentage}%) - run 'wslmole clean' to free space")
-    elif [[ $disk_percentage -ge 75 ]]; then
-        health_score=$((health_score - 10))
-        recommendations+=("Disk usage is high (${disk_percentage}%) - consider running 'wslmole clean'")
-    fi
+    # Gather the remaining metrics, then delegate the scoring arithmetic
+    # to the pure _quickscan_compute_score helper (see above).
 
     local failed_count=0
     if command -v systemctl &>/dev/null && systemctl is-system-running &>/dev/null 2>&1; then
         failed_count=$(systemctl --no-pager --no-legend list-units --state=failed 2>/dev/null | wc -l)
-        if [[ $failed_count -gt 0 ]]; then
-            local penalty=$((failed_count * 5))
-            health_score=$((health_score - penalty))
-            recommendations+=("${failed_count} failed systemd service(s) - run 'wslmole diagnose service' to investigate")
-        fi
+        failed_count=${failed_count:-0}
     fi
 
     local has_wslconfig=false
+    local in_wsl=false
     if is_wsl; then
+        in_wsl=true
         local win_username
         win_username=$(get_windows_username)
         if [[ -n "$win_username" ]]; then
@@ -125,26 +160,19 @@ MOLE
                 has_wslconfig=true
             fi
         fi
-        if [[ "$has_wslconfig" == false ]]; then
-            health_score=$((health_score - 5))
-            recommendations+=("No .wslconfig found - create one to limit WSL2 memory/CPU usage")
-        fi
     fi
 
     local upgradable_count=0
     if command -v apt-get &>/dev/null; then
         upgradable_count=$(apt list --upgradable 2>/dev/null | grep -c 'upgradable' || true)
         upgradable_count=${upgradable_count:-0}
-        if [[ $upgradable_count -gt 10 ]]; then
-            health_score=$((health_score - 5))
-            recommendations+=("${upgradable_count} packages can be upgraded - run 'wslmole packages update'")
-        fi
     fi
 
-    # Clamp score to 0 minimum
-    if [[ $health_score -lt 0 ]]; then
-        health_score=0
-    fi
+    _quickscan_compute_score "$mem_percentage" "$disk_percentage" "$failed_count" \
+        "$has_wslconfig" "$in_wsl" "$upgradable_count"
+
+    local health_score="$QS_HEALTH_SCORE"
+    local -a recommendations=(${QS_RECOMMENDATIONS[@]+"${QS_RECOMMENDATIONS[@]}"})
 
     # ── Output ────────────────────────────────────────────────────
 

@@ -55,6 +55,13 @@ PROTECTED_PREFIXES=(
 # ── Configuration ───────────────────────────────────────────────────
 VALID_CONFIG_KEYS="DRY_RUN FORCE VERBOSE WSLMOLE_LOG_LEVEL WSLMOLE_UPDATE_INTERVAL"
 
+# Warn about a config problem on stderr (so users actually see it) and log it.
+# stderr keeps stdout/JSON output clean for scripted consumers.
+_config_warn() {
+    printf '  %b⚠ config:%b %s\n' "$YELLOW" "$NC" "$1" >&2
+    log_warn "$1"
+}
+
 load_config() {
     [[ -f "$WSLMOLE_CONFIG_FILE" ]] || return 0
     local line_num=0
@@ -65,7 +72,7 @@ load_config() {
         [[ "$line" =~ ^[[:space:]]*$ ]] && continue
         # Require strict KEY=VALUE format (no shell commands, no spaces in key)
         if [[ ! "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
-            log_warn "Malformed config line $line_num in $WSLMOLE_CONFIG_FILE (skipped)"
+            _config_warn "Malformed config line $line_num in $WSLMOLE_CONFIG_FILE (skipped)"
             continue
         fi
         local key="${BASH_REMATCH[1]}"
@@ -74,12 +81,12 @@ load_config() {
         val="${val#\"}" ; val="${val%\"}"
         val="${val#\'}" ; val="${val%\'}"
         if [[ ! " $VALID_CONFIG_KEYS " =~ [[:space:]]${key}[[:space:]] ]]; then
-            log_warn "Unknown config key '$key' at line $line_num in $WSLMOLE_CONFIG_FILE"
+            _config_warn "Unknown config key '$key' at line $line_num in $WSLMOLE_CONFIG_FILE"
             continue
         fi
         # Validate value contains no command substitution or semicolons
         if [[ "$val" =~ [\$\;\`\|] ]]; then
-            log_warn "Unsafe characters in value for '$key' at line $line_num (skipped)"
+            _config_warn "Unsafe characters in value for '$key' at line $line_num (skipped)"
             continue
         fi
         # Assign only known keys
@@ -174,17 +181,19 @@ to_json_kv() {
 }
 
 # ── Size Formatting ─────────────────────────────────────────────────
+# Pure integer arithmetic (no 'bc' dependency). One decimal, truncated.
 format_size() {
-    local bytes=$1
-    if [[ $bytes -ge 1073741824 ]]; then
-        printf "%.1f GB" "$(echo "scale=1; $bytes / 1073741824" | bc)"
-    elif [[ $bytes -ge 1048576 ]]; then
-        printf "%.1f MB" "$(echo "scale=1; $bytes / 1048576" | bc)"
-    elif [[ $bytes -ge 1024 ]]; then
-        printf "%.1f KB" "$(echo "scale=1; $bytes / 1024" | bc)"
+    local bytes=${1:-0}
+    [[ "$bytes" =~ ^[0-9]+$ ]] || bytes=0
+    local div unit
+    if (( bytes >= 1073741824 )); then div=1073741824; unit="GB"
+    elif (( bytes >= 1048576 )); then div=1048576; unit="MB"
+    elif (( bytes >= 1024 )); then div=1024; unit="KB"
     else
         printf "%d B" "$bytes"
+        return
     fi
+    printf "%d.%d %s" "$(( bytes / div ))" "$(( bytes % div * 10 / div ))" "$unit"
 }
 
 # Get directory/file size in bytes
@@ -403,8 +412,9 @@ safe_delete() {
             ;;
     esac
 
-    # Check for suspicious patterns
-    if [[ "$path" =~ \.\. ]] || [[ "$path" == "/" ]]; then
+    # Block path traversal. Match ".." only as a whole path component
+    # ("/../", trailing "/..") so legitimate names like "foo..bar" are allowed.
+    if [[ "$path" =~ (^|/)\.\.(/|$) ]] || [[ "$path" == "/" ]]; then
         print_error "BLOCKED: Suspicious path pattern: $path"
         log_error "BLOCKED: suspicious pattern $path"
         return 1

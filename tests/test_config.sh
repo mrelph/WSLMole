@@ -50,6 +50,19 @@ WSLMOLE_CONFIG_FILE="$TEST_DIR/config_bad"
 echo 'UNKNOWN_KEY=bad' > "$WSLMOLE_CONFIG_FILE"
 load_config 2>/dev/null && pass "unknown config key doesn't crash" || fail "unknown config key doesn't crash"
 
+# Test 6: Unknown config key warns on stderr (visible to the user)
+WSLMOLE_CONFIG_FILE="$TEST_DIR/config_warn"
+echo 'DRYRUN=true' > "$WSLMOLE_CONFIG_FILE"   # typo of DRY_RUN
+warn_out=$(load_config 2>&1 >/dev/null)
+[[ "$warn_out" == *"Unknown config key 'DRYRUN'"* ]] \
+    && pass "unknown key warns on stderr" || fail "unknown key warns on stderr"
+
+# Test 7: Warnings go to stderr, not stdout (keeps JSON/scripts clean)
+WSLMOLE_CONFIG_FILE="$TEST_DIR/config_warn2"
+echo 'UNKNOWN_KEY=bad' > "$WSLMOLE_CONFIG_FILE"
+stdout_out=$(load_config 2>/dev/null)
+[[ -z "$stdout_out" ]] && pass "warnings stay off stdout" || fail "warnings stay off stdout"
+
 echo ""
 echo "============================="
 echo "Tests run: $TESTS_RUN"

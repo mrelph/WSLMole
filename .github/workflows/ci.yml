@@ -25,11 +25,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bc
 
       - name: Run test suite
         run: |
@@ -48,7 +43,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc mandoc
+          sudo apt-get install -y mandoc
 
       - name: Test CLI commands
         run: |

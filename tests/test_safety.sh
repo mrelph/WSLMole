@@ -131,6 +131,37 @@ else
     rm -f "$TEST_FILE"
 fi
 
+# Test 9: Real path traversal is still blocked
+echo "Test 9: Path traversal components are blocked"
+for trav in "/tmp/../etc" "/var/log/.." "/home/user/../../etc/passwd"; do
+    TESTS_RUN=$((TESTS_RUN + 1))
+    if safe_delete "$trav" "test" 2>/dev/null; then
+        echo "✗ CRITICAL: $trav was not blocked!"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+    else
+        echo "✓ $trav is blocked"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+    fi
+done
+
+# Test 10: Legitimate filenames containing ".." are NOT over-blocked
+echo "Test 10: Filenames with embedded dots are deletable"
+export DRY_RUN=false
+for name in "wslmole_foo..bar" "wslmole_..hidden" "wslmole_trailing.."; do
+    TESTS_RUN=$((TESTS_RUN + 1))
+    TEST_FILE="/tmp/${name}_$$"
+    touch "$TEST_FILE"
+    safe_delete "$TEST_FILE" "test" >/dev/null 2>&1
+    if [[ ! -f "$TEST_FILE" ]]; then
+        echo "✓ '$name' deleted (not over-blocked)"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+    else
+        echo "✗ '$name' was over-blocked as traversal"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+        rm -f "$TEST_FILE"
+    fi
+done
+
 echo ""
 echo "============================="
 echo "Tests run: $TESTS_RUN"

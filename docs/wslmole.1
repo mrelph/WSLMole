@@ -1,214 +1,604 @@
 .\" WSLMole man page
 .TH WSLMOLE 1 "June 2026" "WSLMole 2.0.0" "User Commands"
 .SH NAME
-wslmole \- WSL system optimization tool
+wslmole \- WSL system optimization, cleanup, and diagnostics tool
 .SH SYNOPSIS
 .B wslmole
-[\fIcommand\fR] [\fIoptions\fR]
+[\fIglobal-options\fR] [\fIcommand\fR] [\fIcommand-options\fR]
 .SH DESCRIPTION
 .B wslmole
 is a terminal-based system optimization tool built for WSL2 (Windows Subsystem
 for Linux) environments. It scans, cleans, and tunes your WSL instance through
 direct CLI commands or an inline interactive menu.
 .PP
+All commands that delete data run in
+.B dry-run
+mode by default: they only preview what would change. Pass the global
+.B \-\-yes
+flag (or answer the interactive confirmation prompt) to actually apply changes.
+.PP
 Running
 .B wslmole
-with no arguments runs a quick health scan.
+with no command and no action flag runs a quick health scan.
+.SH OPTION PARSING
+Global options are only recognized
+.B before
+the first non-flag argument (the command). Once a command is identified, every
+remaining argument is forwarded verbatim to that command. As a result, global
+flags such as
+.B \-\-yes
+and
+.B \-\-format
+must be placed
+.B before
+the command name.
+.SH GLOBAL OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Show the full usage screen and exit.
+.TP
+.B \-\-version
+Print the version (\fBWSLMole v2.0.0\fR) and exit.
+.TP
+.BR \-i ", " \-\-interactive
+Launch the inline interactive menu and exit.
+.TP
+.BR \-q ", " \-\-quick
+Run the quick system health scan and exit.
+.TP
+.BR \-v ", " \-\-verbose
+Enable verbose session logging to
+.IR ~/.local/share/wslmole/wslmole.log .
+.TP
+.B \-\-no\-color
+Disable colored output. Color is also auto-disabled when
+.B NO_COLOR
+or
+.B WSLMOLE_NO_COLOR
+is set or output is not a terminal.
+.TP
+.BI \-\-format " FORMAT"
+Set the output format. Valid values are
+.B text
+(default) and
+.BR json .
+An invalid value is an error. The
+.BI \-\-format= FORMAT
+syntax is also accepted.
+.TP
+.BR \-y ", " \-\-yes
+Execute changes (sets
+.B DRY_RUN=false
+and
+.BR FORCE=true )
+and skip all confirmation prompts. This is the real "force" switch for
+.B clean
+and
+.BR dev ;
+it must be placed before the command.
 .SH COMMANDS
 .TP
-.B clean
-System cleanup: APT cache, snap revisions, log files, temp files, browser
-cache, user data, and WSL-specific cleanup.
+.B clean \fR[\fIcategory...\fR] [\fIoptions\fR]
+System cleanup across seven categories: APT cache, snap revisions, rotated
+logs, temp files, browser cache, user data, and WSL-specific cleanup.
 .TP
-.B disk \fR[\fIpath\fR]
-Disk usage analysis with multiple view modes including summary, tree view,
-largest files/folders, file type breakdown, and old file detection.
+.B disk \fR[\fIpath\fR] [\fIoptions\fR]
+Disk usage analysis with six view modes.
 .TP
-.B dev \fR[\fIpath\fR]
-Developer artifact cleanup: node_modules, target, __pycache__, .gradle, venv,
-build, dist, and other build artifacts.
+.B dev \fR[\fIpath\fR] [\fIoptions\fR]
+Developer artifact cleanup (build directories, dependency directories, caches).
 .TP
-.B diagnose \fR[\fItype\fR]
-System diagnostics: top processes, memory breakdown, systemd service status,
-and WSL resource information.
+.B diagnose \fR[\fItype\fR] [\fIoptions\fR]
+System diagnostics for processes, memory, services, and WSL resources.
 .TP
-.B packages \fR[\fIaction\fR]
-Package manager wrapper for APT and Snap: audit updates, upgrade packages,
-autoremove unused dependencies, clean caches, and list installed packages.
+.B packages \fR[\fIaction\fR] [\fIoptions\fR]
+Package manager wrapper for APT and Snap.
 .TP
-.B wsl \fR[\fIaction\fR]
-WSL-specific tools: environment info, memory configuration, virtual disk
-compact guide, and Windows interop status.
+.B wsl \fR[\fIaction\fR] [\fIoptions\fR]
+WSL-specific tools and information. Requires a WSL environment.
 .TP
 .B scan
-Run a quick system health scan. This is the same behavior as running
+Quick system health scan with score and recommendations. Same as running
 .B wslmole
 with no command.
 .TP
-.B plan
-Show a risk-labeled action plan with suggested commands and safe auto-fix
-actions.
+.B plan \fR[\fIoptions\fR]
+Show a risk-labeled action plan without changing the system (read-only).
 .TP
-.B fix
-Preview and apply low-risk cleanup actions from the action plan.
+.B fix \fR[\fIoptions\fR]
+Preview and apply low-risk automatic cleanup actions from the action plan.
 .TP
 .B update \fR[\fIoptions\fR]
-Check for and install new releases from the Git repository. Compares the
-current version against published Git tags (v*).
-.SH GLOBAL OPTIONS
+Check for and install updates from the Git repository (self-update).
 .TP
-.BR \-i ", " \-\-interactive
-Launch the inline interactive menu.
-.TP
-.BR \-q ", " \-\-quick
-Run a quick system health scan with score and recommendations.
-.TP
-.BR \-v ", " \-\-verbose
-Enable verbose logging to ~/.local/share/wslmole/wslmole.log.
-.TP
-.BI \-\-format " FORMAT"
-Output format:
-.B text
-(default) or
-.BR json .
-.TP
-.BR \-y ", " \-\-yes
-Execute changes (disables dry-run) and skip confirmation prompts.
-.TP
-.B \-\-no\-color
-Disable colored output. Also respects the
-.B NO_COLOR
-environment variable.
-.TP
-.BR \-h ", " \-\-help
-Show help message.
-.TP
-.B \-\-version
-Show version number.
-.SH CLEAN OPTIONS
+.B help \fR[\fIcommand\fR]
+Show general usage, or help for a specific command.
+.SH CLEAN
+.B wslmole clean
+[\fIcategory...\fR] [\fIoptions\fR]
 .PP
-All cleanup commands run in dry-run mode by default. Use
+Cleanup runs in dry-run mode by default; pass the global
 .B \-\-yes
-to execute changes.
+flag to delete. Categories may be given positionally (for example
+.BR "wslmole clean apt logs" )
+or via
+.BR \-c / \-\-category .
+.SS Categories
 .TP
-.BR \-n ", " \-\-dry\-run
-Preview what would be cleaned (default).
+.B apt
+Run
+.B apt-get clean
+and
+.BR "apt-get autoclean" .
+Requires root, otherwise skipped.
 .TP
-.BI \-c ", " \-\-category " LIST"
-Comma-separated list of categories to clean:
-.BR apt ", " snap ", " logs ", " tmp ", " browser ", " user ", " wsl ", " all .
-.SH DISK OPTIONS
+.B snap
+Remove disabled snap revisions.
 .TP
-.BI \-m ", " \-\-mode " MODE"
-Analysis mode:
-.BR summary ", " tree ", " files ", " folders ", " types ", " old .
-Default:
-.BR summary .
+.B logs
+Delete rotated logs in
+.I /var/log
+(\fB*.gz\fR, \fB*.old\fR, \fB*.1\fR, \fB*.2\fR, \fB*.3\fR) and vacuum the journal
+to 7 days (root).
 .TP
-.BI \-d ", " \-\-depth " N"
-Tree depth for tree mode. Default: 3.
+.BR tmp " (alias: " temp )
+Delete files older than 7 days in
+.I /tmp
+and
+.IR /var/tmp ,
+plus optional cleanup of
+.I ~/.cache
+files older than 7 days.
 .TP
-.BI \-N ", " \-\-top " N"
-Number of results to show. Default: 10.
-.SH DEV OPTIONS
+.B browser
+Clear cache directories for Google Chrome, Chromium, Mozilla Firefox, and
+Microsoft Edge under
+.IR ~/.cache .
 .TP
-.BR \-n ", " \-\-dry\-run
-Preview artifacts without deleting (default).
-.TP
-.BI \-t ", " \-\-types " LIST"
-Comma-separated artifact types:
-.BR node_modules ", " target ", " __pycache__ ", " .gradle ", " venv ", "
-.BR .venv ", " build ", " dist ", " .next ", " .nuxt ", " .cache ", "
-.BR vendor ", " .tox ", " .pytest_cache ", " coverage ", " .nyc_output ", " all .
-.TP
-.BI \-\-older\-than " DAYS"
-Only target artifacts older than DAYS days.
-.SH DIAGNOSE TYPES
-.TP
-.B all
-Run all diagnostics (default).
-.TP
-.B process
-Top CPU and memory consuming processes.
-.TP
-.B memory
-Memory usage breakdown with visual progress bar.
-.TP
-.B service
-Systemd service status and resource usage.
+.BR user " (alias: " userdata )
+Clear the thumbnail cache
+.RI ( ~/.cache/thumbnails ),
+trash
+.RI ( ~/.local/share/Trash ),
+and
+.IR recently-used.xbel .
 .TP
 .B wsl
-WSL-specific environment and resource info.
-.SH PACKAGES ACTIONS
+Delete
+.I /var/log/wsl*.log
+and print
+.I /mnt/c
+performance tips. No-op outside WSL.
+.TP
+.B all
+Expand to all seven categories.
+.PP
+When no category is given the default set is
+.BR apt ", " snap ", " logs ", " tmp ", and " wsl
+(browser and user data are opt-in). An unknown category prints a correction
+suggestion.
+.SS Options
+.TP
+.BR \-n ", " \-\-dry\-run
+Preview only; perform no deletion (sets
+.BR DRY_RUN=true ).
+This is the default.
+.TP
+.BI \-c " LIST" "\fR, \fB" \-\-category " LIST"
+Comma-separated list of categories to clean.
+.TP
+.BR \-h ", " \-\-help
+Show clean help.
+.PP
+.B Note:
+the clean help text advertises a
+.BR \-f / \-\-force
+flag, but the command's own parser does
+.B not
+implement it; passing
+.B \-f
+after
+.B clean
+yields "Unknown option". Forcing is done with the global
+.B \-\-yes
+flag placed before the command.
+.SH DISK
+.B wslmole disk
+[\fIpath\fR] [\fIoptions\fR]
+.PP
+The path defaults to
+.I /
+and must be an existing directory. JSON output is emitted for the
+.BR summary ", " files ", and " old
+modes.
+.SS Modes
+.TP
+.B summary
+.B df
+overview plus top-level directory sizes (default).
+.TP
+.B tree
+Hierarchical
+.B "du --max-depth"
+tree sorted by size.
+.TP
+.BR files " (aliases: " file ", " large ", " largest )
+Largest individual files.
+.TP
+.BR folders " (aliases: " folder ", " dirs )
+Largest immediate subdirectories.
+.TP
+.BR types " (alias: " type )
+Usage grouped by file extension.
+.TP
+.B old
+Files not modified in 90 or more days.
+.PP
+The mode may also be given positionally (for example
+.BR "wslmole disk / files" );
+.B usage
+is an alias for
+.BR summary .
+.SS Options
+.TP
+.BI \-m " MODE" "\fR, \fB" \-\-mode " MODE"
+Analysis mode (default:
+.BR summary ).
+.TP
+.BI \-d " N" "\fR, \fB" \-\-depth " N"
+Tree depth for
+.B tree
+mode (default: 3).
+.TP
+.BI \-n " N" "\fR, \fB" \-\-top " N"
+Number of results to show (default: 10).
+.TP
+.BR \-h ", " \-\-help
+Show disk help.
+.SH DEV
+.B wslmole dev
+[\fIpath\fR] [\fIoptions\fR]
+.PP
+Developer artifact cleanup. The path defaults to
+.I .
+and must be an existing directory. Cleanup runs in dry-run mode by default;
+use the global
+.B \-\-yes
+flag to delete. Artifact types may be given positionally
+.RB ( node
+is an alias for
+.BR node_modules ).
+.SS Artifact types
+.B node_modules ", " target ", " __pycache__ ", " .gradle ", " venv ", " .venv ", "
+.B build ", " dist ", " .next ", " .nuxt ", " .cache ", " vendor ", " .tox ", "
+.B .pytest_cache ", " coverage ", " .nyc_output .
+.PP
+.B all
+expands to the full list, which is also the default when no type is given.
+.SS Options
+.TP
+.BR \-n ", " \-\-dry\-run
+Preview only; perform no deletion (sets
+.BR DRY_RUN=true ).
+This is the default.
+.TP
+.BI \-t " LIST" "\fR, \fB" \-\-types " LIST"
+Comma-separated list of artifact types to target.
+.TP
+.BI \-\-older\-than " DAYS"
+Only target artifacts whose modification time is older than
+.I DAYS
+days.
+.TP
+.BR \-h ", " \-\-help
+Show dev help.
+.PP
+.B Note:
+as with
+.BR clean ,
+the dev help text advertises
+.BR \-f / \-\-force ,
+but the command does not implement it. Use the global
+.B \-\-yes
+flag instead.
+.SH DIAGNOSE
+.B wslmole diagnose
+[\fItype\fR] [\fIoptions\fR]
+.PP
+The type is given positionally and defaults to
+.BR all .
+JSON output is available for the
+.B memory
+diagnostic.
+.SS Types
+.TP
+.B all
+Run process, memory, and service diagnostics, plus
+.B wsl
+when in WSL (default).
+.TP
+.BR process " (alias: " processes )
+Top 10 CPU and top 10 memory consumers.
+.TP
+.BR memory " (alias: " mem )
+.I /proc/meminfo
+breakdown with a colored progress bar and swap status.
+.TP
+.BR service " (alias: " services )
+Failed systemd services, running count, and the top 5 services by memory.
+No-op when systemd is unavailable.
+.TP
+.B wsl
+WSL version, kernel, distro, hostname,
+.I .wslconfig
+contents, and
+.BR "df -h /" .
+.TP
+.BR \-h ", " \-\-help
+Show diagnose help.
+.SH PACKAGES
+.B wslmole packages
+[\fIaction\fR] [\fIoptions\fR]
+.PP
+Package manager wrapper for APT and Snap. The action is given positionally and
+defaults to
+.BR audit
+.RB ( check
+is an alias for
+.BR audit ).
+JSON output is available for
+.BR audit .
+.SS Actions
 .TP
 .B audit
-Check for available APT and Snap updates (default).
+List upgradable APT packages and available snap refreshes (default).
 .TP
 .B update
-Update all APT and Snap packages.
+Run
+.B "apt-get update && apt-get upgrade -y"
+(root, with confirmation) and
+.BR "snap refresh" .
 .TP
 .B autoremove
-Remove unused APT dependencies.
+Preview, then run
+.B "apt-get autoremove -y"
+(root, with confirmation).
 .TP
 .B clean
-Clean APT cache and report old Snap revisions.
+Show the APT cache size, run
+.B "apt-get clean"
+and
+.B autoclean
+(root, with confirmation), and report disabled snap revisions.
 .TP
 .B list
-List installed APT and Snap packages.
-.SH WSL ACTIONS
+Count installed dpkg selections and list snaps.
+.TP
+.BR \-h ", " \-\-help
+Show packages help.
+.SH WSL
+.B wslmole wsl
+[\fIaction\fR] [\fIoptions\fR]
+.PP
+WSL-specific tools. The
+.B entire command
+requires a WSL environment; outside WSL it prints "Not running in WSL" and
+exits non-zero. The action defaults to
+.BR info .
+JSON output is available for
+.BR info .
+.SS Actions
 .TP
 .B info
-WSL environment info, .wslconfig, and /etc/wsl.conf (default).
+WSL version, kernel, distro, hostname, user, shell, the Windows
+.IR .wslconfig ,
+and
+.I /etc/wsl.conf
+(default).
 .TP
-.B memory
-Memory allocation, usage, and .wslconfig limits.
+.BR memory " (alias: " mem )
+Allocated, used, and available memory, the
+.I .wslconfig
+.B memory=
+limit, and swap status.
 .TP
-.B compact
-Guide to compacting the WSL2 virtual disk (vhdx).
+.BR compact " (alias: " compact-guide )
+Step-by-step guide to compacting the WSL2
+.I ext4.vhdx
+virtual disk.
 .TP
 .B interop
-Windows/Linux interop status and PATH integration.
-.SH PLAN AND FIX OPTIONS
+WSLInterop binfmt_misc status, Windows PATH entries, the
+.I /etc/wsl.conf
+.B [interop]
+section, and checks for cmd.exe, powershell.exe, explorer.exe, and code.
 .TP
-.B plan
-Shows recommended actions without changing the system.
+.BR \-h ", " \-\-help
+Show wsl help.
+.SH SCAN
+.B wslmole scan
+.PP
+Quick system health scan. Computes a health score (0\-100) and grade
+(Excellent >= 90, Good >= 70, Fair >= 50, otherwise Poor), estimates cleanable
+space, and prints recommendations. This is also the default behavior when
+.B wslmole
+is run with no command, and via the global
+.BR \-q / \-\-quick
+flag. JSON output is supported. The only accepted option is
+.BR \-h / \-\-help ;
+any other option is an error.
+.SH PLAN
+.B wslmole plan
+[\fIoptions\fR]
+.PP
+Show a risk-labeled action plan from lightweight checks without changing the
+system (read-only). Risk levels are
+.BR low ", " medium ", and " review .
+JSON output is supported.
+.SS Options
 .TP
-.BR plan " " \-\-risk " " \fIRISK\fR
-Show only recommendations with risk
+.BI \-\-risk " RISK"
+Show only items with the given risk:
 .BR low ", " medium ", or " review .
 .TP
-.BR plan " " \-\-auto
-Show only automatic cleanup actions.
+.B \-\-auto
+Show only low-risk automatic actions.
 .TP
-.BR plan " " \-\-category " " \fICATEGORY\fR
-Show only one recommendation category, such as
-.BR logs ", " tmp ", or " snap .
+.BI \-\-category " CATEGORY"
+Show only one category, for example
+.BR logs ", " tmp ", " snap ", " apt ", " disk ", " packages ", " services ", " wslconfig ", or " dev .
 .TP
-.BR fix " " \-\-dry\-run
-Shows the current action plan without applying low-risk cleanup actions.
+.BR \-h ", " \-\-help
+Show plan help.
+.SH FIX
+.B wslmole fix
+[\fIoptions\fR]
+.PP
+Preview and apply low-risk automatic cleanup actions from the action plan.
+Only items flagged as automatic (categories
+.BR apt ", " logs ", and " tmp )
+are applied; other categories are skipped with a notice. Runs in dry-run mode
+by default, so you must pass
+.B \-\-yes
+or answer the confirmation prompt to apply. In JSON mode the plan is printed
+and nothing is applied.
+.SS Options
 .TP
-.BR fix " " \-\-only " " \fILIST\fR
-Apply only the comma-separated automatic categories in LIST, such as
-.BR logs,tmp .
+.BR \-n ", " \-\-dry\-run
+Show the plan without applying actions (sets
+.BR DRY_RUN=true ).
 .TP
-.BR fix " " \-\-yes
-Applies low-risk cleanup actions without prompting.
-.SH UPDATE OPTIONS
+.BI \-\-only " LIST"
+Apply only these automatic categories, comma-separated (for example
+.BR logs,tmp ).
+.TP
+.B \-\-yes
+Apply low-risk actions without prompting (sets
+.B FORCE=true
+and
+.BR DRY_RUN=false ).
+Unlike
+.B clean
+and
+.BR dev ,
+.B fix
+parses this flag itself.
+.TP
+.BR \-h ", " \-\-help
+Show fix help.
+.SH UPDATE
+.B wslmole update
+[\fIoptions\fR]
+.PP
+Check for and install updates from the Git repository. Requires a Git checkout.
+Honors
+.BR DRY_RUN .
+A periodic background update check also runs at startup (every
+.BR WSLMOLE_UPDATE_INTERVAL
+seconds, default 24h), suppressed in JSON and non-interactive sessions. JSON
+output is supported for check results.
+.SS Options
 .TP
 .BR \-c ", " \-\-check
 Check for updates without installing.
+.TP
+.BR \-h ", " \-\-help
+Show update help.
+.SH HELP
+.B wslmole help
+[\fIcommand\fR]
+.PP
+With no argument, print the full usage screen. With a command argument
+.RB ( clean ", " disk ", " dev ", " diagnose ", " packages ", " wsl ", " scan ", " plan ", " fix ", or " update ),
+print that command's help. The global
+.BR \-h / \-\-help
+flag also prints the usage screen.
+.SH CONFIGURATION
+On startup
+.B wslmole
+loads
+.IR ~/.config/wslmole/config ,
+a strict
+.B KEY=VALUE
+file (blank lines and
+.B #
+comments are skipped). Malformed lines, unknown keys, and values containing
+.BR $ ", " ; ", " ` ", or " |
+are rejected with a warning on standard error. The recognized keys are:
+.TP
+.B DRY_RUN
+.BR true | false
+(default
+.BR true ).
+When true, deletions are only previewed.
+.TP
+.B FORCE
+.BR true | false
+(default
+.BR false ).
+When true, confirmation prompts are auto-approved.
+.TP
+.B VERBOSE
+.BR true | false
+(default
+.BR false ).
+When true, enables session logging to the log file.
+.TP
+.B WSLMOLE_LOG_LEVEL
+.BR DEBUG | INFO | WARN | ERROR
+(default
+.BR INFO ).
+Gates which log messages are written.
+.TP
+.B WSLMOLE_UPDATE_INTERVAL
+Integer seconds (default
+.BR 86400 ,
+24h). Controls the periodic background update-check frequency.
+.SH ENVIRONMENT
+.TP
+.B NO_COLOR
+If set, disables colored output.
+.TP
+.B WSLMOLE_NO_COLOR
+If set to
+.BR 1 ,
+disables colored output.
+.SH JSON OUTPUT
+When
+.B \-\-format json
+is used, JSON is written to the caller's original standard output while human
+text is redirected to standard error, so only machine-readable JSON reaches
+stdout. The periodic update check and the interactive menu are suppressed in
+JSON or non-interactive sessions.
+.SH SAFETY
+Deletions are guarded by a set of protected paths that are never removed,
+including
+.IR / ", " /bin ", " /boot ", " /dev ", " /etc ", " /home ", " /lib ", " /mnt ", " /opt ", " /proc ", " /root ", " /run ", " /sbin ", " /sys ", " /usr ", and " /var ,
+and protected prefixes
+.RI ( /bin ", " /sbin ", " /boot ", " /dev ", " /etc ", " /lib ", " /lib64 ", " /proc ", " /sys ", " /usr ", " /run )
+whose contents may never be deleted. Relative paths, paths containing
+.B ..
+components, and the root
+.B /
+are refused. APT operations and journal vacuuming require root and are skipped
+with a warning otherwise.
+.SH FILES
+.TP
+.I ~/.config/wslmole/config
+Optional configuration file (see
+.BR CONFIGURATION ).
+.TP
+.I ~/.local/share/wslmole/wslmole.log
+Session log file, written when verbose logging is enabled.
 .SH EXAMPLES
 .TP
-Run a quick health scan:
+Run a quick health scan (default):
 .B wslmole
 .TP
-Launch interactive menu:
+Launch the interactive menu:
 .B wslmole \-i
 .TP
-Quick health scan explicitly:
-.B wslmole \-q
-.TP
-Quick health scan by command:
+Run the quick scan by command:
 .B wslmole scan
 .TP
 Review the action plan:
@@ -224,27 +614,25 @@ Preview low-risk automatic cleanup:
 .B wslmole fix \-\-dry\-run
 .TP
 Apply only log and temp cleanup:
-.B wslmole fix \-\-only logs,tmp
+.B wslmole \-\-yes fix \-\-only logs,tmp
 .TP
-Preview all cleanup categories:
+Preview all default cleanup categories:
 .B wslmole clean \-\-dry\-run
 .TP
-Clean APT and log files only:
+Clean APT and log files only (preview):
 .B wslmole clean \-c apt,logs
 .TP
-Find 20 largest files in home directory:
-.B wslmole disk ~ \-m files \-N 20
+Actually clean APT and logs:
+.B wslmole \-\-yes clean apt logs
 .TP
-Clean old developer artifacts:
+Find the 20 largest files in the home directory:
+.B wslmole disk ~ \-m files \-n 20
+.TP
+Preview cleanup of developer artifacts older than 30 days:
 .B wslmole dev ~/projects \-\-older\-than 30
-.SH FILES
 .TP
-.I ~/.local/share/wslmole/wslmole.log
-Log file (when \-\-verbose is enabled). Rotated at 1MB.
-.TP
-.I ~/.config/wslmole/config
-Optional configuration file (KEY=VALUE format). Supports:
-DRY_RUN, FORCE, VERBOSE, WSLMOLE_LOG_LEVEL, WSLMOLE_UPDATE_INTERVAL.
+Check for an update without installing:
+.B wslmole update \-\-check
 .SH EXIT STATUS
 .TP
 .B 0
@@ -261,4 +649,7 @@ Permission denied.
 .SH BUGS
 Report bugs at https://github.com/mrelph/WSLMole/issues
 .SH SEE ALSO
-.BR wsl.exe (1)
+.BR wsl.exe (1),
+.BR apt-get (8),
+.BR snap (8),
+.BR journalctl (1)

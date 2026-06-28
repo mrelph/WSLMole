@@ -2,18 +2,33 @@
 # Copy to ~/.config/wslmole/config to customize behavior
 #
 # All settings are optional. Uncomment and modify as needed.
+#
+# FORMAT: this file is PARSED, not sourced as a shell script. Each line must be
+# a plain KEY=VALUE pair. Lines starting with '#' and blank lines are ignored.
+# Shell syntax (arrays, command substitution, quoted expressions) is NOT
+# supported. Unknown keys, malformed lines, and values containing any of the
+# characters $ ; ` | are rejected with a warning on stderr and left unapplied.
+#
+# Only the keys listed below are recognized.
 
-# Default dry-run mode (true = preview only, false = execute)
-# DRY_RUN=false
+# Default dry-run mode. When true, deletions are previewed only (nothing is
+# removed); pass the global --yes/-y flag or confirm interactively to execute.
+# Values: true | false   Default: true
+# DRY_RUN=true
 
-# Skip confirmation prompts
+# Skip confirmation prompts (auto-approve). When true, confirm() answers yes
+# to every prompt. The global --yes/-y flag sets this at runtime.
+# Values: true | false   Default: false
 # FORCE=false
 
-# Enable verbose logging
+# Enable verbose session logging to ~/.local/share/wslmole/wslmole.log.
+# Values: true | false   Default: false
 # VERBOSE=false
 
-# Log level: DEBUG, INFO, WARN, ERROR
-# WSLMOLE_LOG_LEVEL="INFO"
+# Minimum log level written when logging is enabled (gates log_* messages).
+# Values: DEBUG | INFO | WARN | ERROR   Default: INFO
+# WSLMOLE_LOG_LEVEL=INFO
 
-# Additional protected paths (appended to built-in list)
-# WSLMOLE_PROTECTED_PATHS_EXTRA=("/my/important/dir" "/another/path")
+# Frequency, in seconds, of the periodic background update check at startup.
+# Values: integer seconds   Default: 86400 (24 hours)
+# WSLMOLE_UPDATE_INTERVAL=86400

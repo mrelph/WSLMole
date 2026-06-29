@@ -20,6 +20,45 @@ flag (or answer the interactive confirmation prompt) to actually apply changes.
 Running
 .B wslmole
 with no command and no action flag runs a quick health scan.
+.SH INSTALLATION
+Run
+.B ./install.sh
+from a git checkout. The installer is idempotent (safe to re-run) and:
+.RS
+.IP \(bu 2
+symlinks
+.I wslmole
+into
+.IR /usr/local/bin ;
+.IP \(bu 2
+installs this man page into
+.I /usr/local/share/man/man1
+and refreshes the man-page database;
+.IP \(bu 2
+installs bash and zsh completions system-wide, falling back to the per-user
+XDG data directory when system locations are not writable;
+.IP \(bu 2
+verifies required dependencies (Bash 4+, coreutils/findutils) and reports
+optional ones
+.RB ( git
+for self-update,
+.B mandoc
+for the man page) as non-fatal warnings.
+.RE
+.PP
+Self-update via
+.B wslmole update
+only works from a git checkout; the installer detects this and reports whether
+self-update is available.
+.PP
+To uninstall, run
+.BR ./uninstall.sh ,
+which removes the symlink, man page, and completions. Add
+.B \-\-purge
+to also remove
+.I ~/.config/wslmole
+and
+.IR ~/.local/share/wslmole .
 .SH OPTION PARSING
 Global options are only recognized
 .B before
@@ -590,6 +629,19 @@ Optional configuration file (see
 .TP
 .I ~/.local/share/wslmole/wslmole.log
 Session log file, written when verbose logging is enabled.
+.TP
+.I /usr/local/bin/wslmole
+Symlink to the entry script, created by
+.BR install.sh .
+.TP
+.I /usr/local/share/man/man1/wslmole.1
+This man page.
+.TP
+.I /usr/local/share/bash-completion/completions/wslmole
+.TQ
+.I /usr/local/share/zsh/site-functions/_wslmole
+Bash and zsh completion scripts (installed to the per-user XDG data directory
+when the system locations are not writable).
 .SH EXAMPLES
 .TP
 Run a quick health scan (default):

@@ -1,0 +1,112 @@
+#compdef wslmole
+# Zsh completion for WSLMole.
+# Installed to a zsh site-functions directory by install.sh.
+
+_wslmole() {
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    local -a commands
+    commands=(
+        'clean:Remove cleanable files by category'
+        'disk:Analyze disk usage with multiple view modes'
+        'dev:Clean developer build artifacts'
+        'diagnose:Run system diagnostics'
+        'packages:Manage apt/snap packages'
+        'wsl:WSL-specific tools and information'
+        'scan:Quick system health scan'
+        'plan:Show a risk-labeled action plan'
+        'fix:Apply low-risk cleanup actions'
+        'update:Check for and install updates'
+        'help:Show help for a command'
+    )
+
+    _arguments -C \
+        '(-h --help)'{-h,--help}'[Show help]' \
+        '--version[Show version]' \
+        '(-i --interactive)'{-i,--interactive}'[Launch interactive menu]' \
+        '(-q --quick)'{-q,--quick}'[Run a quick scan]' \
+        '(-v --verbose)'{-v,--verbose}'[Verbose output]' \
+        '--no-color[Disable colored output]' \
+        '--format[Output format]:format:(text json)' \
+        '(-y --yes)'{-y,--yes}'[Assume yes / apply changes]' \
+        '1: :->command' \
+        '*:: :->args'
+
+    case $state in
+        command)
+            _describe -t commands 'wslmole command' commands
+            ;;
+        args)
+            case $line[1] in
+                clean)
+                    _arguments \
+                        '(-n --dry-run)'{-n,--dry-run}'[Preview without deleting]' \
+                        '(-f --force)'{-f,--force}'[Skip confirmation prompts]' \
+                        '(-c --category)'{-c,--category}'[Categories to clean]:category:(apt snap logs tmp browser user wsl all)' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '*:category:(apt snap logs tmp browser user wsl all)'
+                    ;;
+                disk)
+                    _arguments \
+                        '(-m --mode)'{-m,--mode}'[Analysis mode]:mode:(summary tree files folders types old)' \
+                        '(-d --depth)'{-d,--depth}'[Tree depth]:depth:' \
+                        '(-n --top)'{-n,--top}'[Show top N entries]:n:' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '*:path:_files -/'
+                    ;;
+                dev)
+                    _arguments \
+                        '(-n --dry-run)'{-n,--dry-run}'[Preview without deleting]' \
+                        '(-f --force)'{-f,--force}'[Skip confirmation prompts]' \
+                        '(-t --types)'{-t,--types}'[Artifact types]:types:' \
+                        '--older-than[Only artifacts older than DAYS]:days:' \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '*:path:_files -/'
+                    ;;
+                diagnose)
+                    _arguments \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '*:type:(all process memory service wsl)'
+                    ;;
+                packages)
+                    _arguments \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '*:action:(audit update autoremove clean list)'
+                    ;;
+                wsl)
+                    _arguments \
+                        '(-h --help)'{-h,--help}'[Show help]' \
+                        '*:action:(info memory compact interop)'
+                    ;;
+                plan)
+                    _arguments \
+                        '--risk[Filter by risk]:risk:(low medium review)' \
+                        '--auto[Only low-risk automatic actions]' \
+                        '--category[Filter by category]:category:' \
+                        '(-h --help)'{-h,--help}'[Show help]'
+                    ;;
+                fix)
+                    _arguments \
+                        '(-n --dry-run)'{-n,--dry-run}'[Show plan without applying]' \
+                        '--only[Apply only these categories]:categories:' \
+                        '--yes[Apply without prompting]' \
+                        '(-h --help)'{-h,--help}'[Show help]'
+                    ;;
+                update)
+                    _arguments \
+                        '(-c --check)'{-c,--check}'[Check without installing]' \
+                        '(-h --help)'{-h,--help}'[Show help]'
+                    ;;
+                scan)
+                    _arguments '(-h --help)'{-h,--help}'[Show help]'
+                    ;;
+                help)
+                    _describe -t commands 'command' commands
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_wslmole "$@"

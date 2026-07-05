@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./lint.sh)",
+      "Bash(./tests/run_all.sh)",
+      "Bash(./tests/test_*.sh)",
+      "Bash(shellcheck:*)",
+      "Bash(./wslmole --help)",
+      "Bash(./wslmole --version)"
+    ]
+  }
+}

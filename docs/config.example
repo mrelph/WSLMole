@@ -32,3 +32,9 @@
 # Frequency, in seconds, of the periodic background update check at startup.
 # Values: integer seconds   Default: 86400 (24 hours)
 # WSLMOLE_UPDATE_INTERVAL=86400
+
+# Maximum time, in seconds, allowed for read-only probes such as snap, apt,
+# systemctl, and Windows interop checks. Timed-out checks are skipped and
+# reported without blocking the rest of the scan.
+# Values: integer from 1 through 30   Default: 2
+# WSLMOLE_PROBE_TIMEOUT=2

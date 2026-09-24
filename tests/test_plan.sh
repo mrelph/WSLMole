@@ -150,8 +150,17 @@ fi
 
 _plan_reset
 json=$(FORMAT=text plan_print_json)
-[[ "$json" == '{"items":[]}' ]] && pass "plan_print_json: empty plan yields empty items array" \
-    || fail "plan_print_json: empty plan yields empty items array" '{"items":[]}' "$json"
+[[ "$json" == '{"items":[],"skipped_checks":[]}' ]] && pass "plan_print_json: empty plan yields empty items and skipped arrays" \
+    || fail "plan_print_json: empty plan yields empty items and skipped arrays" '{"items":[],"skipped_checks":[]}' "$json"
+
+PLAN_SKIPPED_CHECKS=("snap")
+json=$(FORMAT=text plan_print_json)
+if [[ "$json" == *'"skipped_checks":["snap"]'* ]]; then
+    pass "plan_print_json: reports skipped probes"
+else
+    fail "plan_print_json: reports skipped probes" '"skipped_checks":["snap"]' "$json"
+fi
+PLAN_SKIPPED_CHECKS=()
 
 # ── plan_has_auto_actions ─────────────────────────────────────────
 reset_filters

@@ -242,8 +242,8 @@ diagnose_services() {
     fi
 
     # Verify systemd is actually running (PID 1)
-    if ! systemctl is-system-running &>/dev/null 2>&1; then
-        print_warning "systemd is not running as init system"
+    if ! run_probe "$WSLMOLE_PROBE_TIMEOUT" systemctl is-system-running &>/dev/null; then
+        print_warning "systemd is unavailable or did not respond within ${WSLMOLE_PROBE_TIMEOUT}s"
         print_info "Service diagnostics require systemd to be the init system."
         print_info "For WSL2, enable systemd in /etc/wsl.conf under [boot] with systemd=true"
         return 0
@@ -254,7 +254,10 @@ diagnose_services() {
     echo ""
 
     local failed_services
-    failed_services=$(systemctl --no-pager --no-legend list-units --state=failed 2>/dev/null || true)
+    if ! failed_services=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" systemctl --no-pager --no-legend list-units --state=failed 2>/dev/null); then
+        print_warning "Failed-service check did not respond within ${WSLMOLE_PROBE_TIMEOUT}s"
+        failed_services=""
+    fi
 
     if [[ -n "$failed_services" ]]; then
         while IFS= read -r line; do
@@ -269,8 +272,12 @@ diagnose_services() {
     echo ""
 
     # Count running services
-    local running_count
-    running_count=$(systemctl --no-pager --no-legend list-units --type=service --state=running 2>/dev/null | wc -l)
+    local running_services running_count
+    if ! running_services=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" systemctl --no-pager --no-legend list-units --type=service --state=running 2>/dev/null); then
+        print_warning "Running-service check did not respond within ${WSLMOLE_PROBE_TIMEOUT}s"
+        running_services=""
+    fi
+    running_count=$(awk 'NF { count++ } END { print count + 0 }' <<< "$running_services")
     print_info "Running services: ${BOLD}${running_count}${NC}"
 
     echo ""
@@ -282,7 +289,7 @@ diagnose_services() {
     printf "    %-40s  %s\n" "────────────────────────────────────────" "──────────"
 
     local services_list
-    services_list=$(systemctl --no-pager --no-legend list-units --type=service --state=running 2>/dev/null | awk '{print $1}')
+    services_list=$(awk 'NF { print $1 }' <<< "$running_services")
 
     if [[ -n "$services_list" ]]; then
         local -a service_mem_pairs=()
@@ -290,7 +297,7 @@ diagnose_services() {
         while IFS= read -r svc; do
             [[ -n "$svc" ]] || continue
             local mem_current
-            mem_current=$(systemctl show "$svc" --property=MemoryCurrent 2>/dev/null | cut -d= -f2)
+            mem_current=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" systemctl show "$svc" --property=MemoryCurrent 2>/dev/null | cut -d= -f2 || true)
 
             # Skip if not available or infinity
             if [[ -z "$mem_current" || "$mem_current" == "[not set]" || "$mem_current" == "infinity" ]]; then

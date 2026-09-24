@@ -73,6 +73,9 @@ cmd_disk() {
         esac
     done
 
+    validate_integer_option "$depth" "--depth" 0 20 || return 1
+    validate_integer_option "$top" "--top" 1 1000 || return 1
+
     cmd_disk_mode "$mode" "$path" "$depth" "$top"
 }
 
@@ -87,8 +90,8 @@ cmd_disk_help() {
     echo ""
     echo -e "${BOLD}Options:${NC}"
     echo -e "  ${BOLD}-m, --mode${NC} MODE      Analysis mode (default: summary)"
-    echo -e "  ${BOLD}-d, --depth${NC} N        Tree depth for tree mode (default: 3)"
-    echo -e "  ${BOLD}-n, --top${NC} N          Number of results to show (default: 10)"
+    echo -e "  ${BOLD}-d, --depth${NC} N        Tree depth, 0-20 (default: 3)"
+    echo -e "  ${BOLD}-n, --top${NC} N          Number of results, 1-1000 (default: 10)"
     echo -e "  ${BOLD}-h, --help${NC}           Show this help message"
     echo ""
     echo -e "${BOLD}Modes:${NC}"
@@ -113,6 +116,9 @@ cmd_disk_mode() {
     local path="${2:-/}"
     local depth="${3:-3}"
     local top="${4:-10}"
+
+    validate_integer_option "$depth" "--depth" 0 20 || return 1
+    validate_integer_option "$top" "--top" 1 1000 || return 1
 
     # Validate path exists
     if [[ ! -d "$path" ]]; then
@@ -195,9 +201,10 @@ disk_summary() {
     fi
 
     if [[ "${FORMAT:-text}" == "json" ]]; then
-        local fs_json
-        fs_json=$(df -B1 "$path" 2>/dev/null | awk 'NR==2{printf "{\"filesystem\":\"%s\",\"size\":%s,\"used\":%s,\"available\":%s,\"mount\":\"%s\"}", $1,$2,$3,$4,$6}')
-        json_output "{\"mode\":\"summary\",\"path\":\"$path\",\"fs\":${fs_json:-{}}}"
+        local filesystem="" size=0 used=0 available=0 capacity="" mount=""
+        read -r filesystem size used available capacity mount \
+            < <(df -P -B1 "$path" 2>/dev/null | awk 'NR==2 {print $1, $2, $3, $4, $5, $6}')
+        json_output "{\"mode\":\"summary\",\"path\":$(json_quote "$path"),\"fs\":{\"filesystem\":$(json_quote "$filesystem"),\"size\":${size:-0},\"used\":${used:-0},\"available\":${available:-0},\"mount\":$(json_quote "$mount")}}"
     fi
 
     echo ""
@@ -214,7 +221,29 @@ disk_tree() {
     local base_depth
     base_depth=$(echo "$path" | tr -cd '/' | wc -c)
 
-    (du -h --max-depth="$depth" "$path" 2>/dev/null | sort -rh | head -40 || true) | while IFS=$'\t' read -r size dir; do
+    local results_tmp
+    results_tmp=$(mktemp)
+    (du -B1 --null --max-depth="$depth" "$path" 2>/dev/null | sort -z -rn > "$results_tmp" || true) &
+    local scan_pid=$!
+    show_progress "$scan_pid"
+    wait "$scan_pid" 2>/dev/null || true
+
+    local -a sizes=()
+    local -a paths=()
+    local record bytes dir
+    while IFS= read -r -d '' record; do
+        bytes="${record%%$'\t'*}"
+        dir="${record#*$'\t'}"
+        sizes+=("$bytes")
+        paths+=("$dir")
+        (( ${#paths[@]} >= 40 )) && break
+    done < "$results_tmp"
+    rm -f "$results_tmp"
+
+    local i
+    for i in "${!paths[@]}"; do
+        bytes="${sizes[$i]}"
+        dir="${paths[$i]}"
         # Calculate relative depth for indentation
         local dir_depth
         dir_depth=$(echo "$dir" | tr -cd '/' | wc -c)
@@ -222,13 +251,23 @@ disk_tree() {
 
         # Build indentation string
         local indent=""
-        local i
-        for ((i = 0; i < indent_level; i++)); do
+        local indent_i
+        for ((indent_i = 0; indent_i < indent_level; indent_i++)); do
             indent+="  "
         done
 
-        printf "    %s%-8s %s\n" "$indent" "$size" "$dir"
+        printf "    %s%-12s %s\n" "$indent" "$(format_size "$bytes")" "$dir"
     done
+
+    if [[ "${FORMAT:-text}" == "json" ]]; then
+        local items="[" first=true
+        for i in "${!paths[@]}"; do
+            [[ "$first" == true ]] && first=false || items+=","
+            items+="$(to_json_kv "bytes" "${sizes[$i]}" "path" "${paths[$i]}")"
+        done
+        items+="]"
+        json_output "{\"mode\":\"tree\",\"path\":$(json_quote "$path"),\"depth\":${depth},\"items\":${items}}"
+    fi
 
     echo ""
 }
@@ -243,34 +282,46 @@ disk_largest_files() {
     print_info "Scanning..."
     local results_tmp
     results_tmp=$(mktemp)
-    (find "$path" -type f -printf '%s\t%p\n' 2>/dev/null | sort -rn | head -"$top" > "$results_tmp") &
-    show_progress $!
-    wait $! 2>/dev/null || true
-    local results
-    results=$(cat "$results_tmp")
+    (find "$path" -type f -printf '%s\t%p\0' 2>/dev/null | sort -z -rn > "$results_tmp" || true) &
+    local scan_pid=$!
+    show_progress "$scan_pid"
+    wait "$scan_pid" 2>/dev/null || true
+
+    local -a sizes=()
+    local -a paths=()
+    local record bytes filepath
+    while IFS= read -r -d '' record; do
+        bytes="${record%%$'\t'*}"
+        filepath="${record#*$'\t'}"
+        sizes+=("$bytes")
+        paths+=("$filepath")
+        (( ${#paths[@]} >= top )) && break
+    done < "$results_tmp"
     rm -f "$results_tmp"
 
-    if [[ -z "$results" ]]; then
+    if [[ ${#paths[@]} -eq 0 ]]; then
         print_info "No files found in $path"
-        return 0
+    else
+        echo ""
     fi
 
-    echo ""
-    local rank=1
-    while IFS=$'\t' read -r bytes filepath; do
+    local i
+    for i in "${!paths[@]}"; do
+        bytes="${sizes[$i]}"
+        filepath="${paths[$i]}"
         local formatted_size
         formatted_size=$(format_size "$bytes")
-        printf "    %2d. %-12s %s\n" "$rank" "$formatted_size" "$filepath"
-        rank=$((rank + 1))
-    done <<< "$results"
+        printf "    %2d. %-12s %s\n" "$((i + 1))" "$formatted_size" "$filepath"
+    done
 
     if [[ "${FORMAT:-text}" == "json" ]]; then
         local items="[" jfirst=true
-        while IFS=$'\t' read -r bytes filepath; do
+        for i in "${!paths[@]}"; do
             [[ "$jfirst" == true ]] && jfirst=false || items+=","
-            items+="$(to_json_kv "bytes" "$bytes" "path" "$filepath")"
-        done <<< "$results"
-        json_output "{\"mode\":\"files\",\"path\":\"$path\",\"items\":${items}]}"
+            items+="$(to_json_kv "bytes" "${sizes[$i]}" "path" "${paths[$i]}")"
+        done
+        items+="]"
+        json_output "{\"mode\":\"files\",\"path\":$(json_quote "$path"),\"items\":${items}}"
     fi
 
     echo ""
@@ -283,23 +334,50 @@ disk_largest_folders() {
 
     print_header "Largest Folders: $path (top $top)"
 
-    local results
-    results=$(du -sb "$path"/*/ 2>/dev/null | sort -rn | head -"$top" || true)
+    local results_tmp
+    results_tmp=$(mktemp)
+    while IFS= read -r -d '' dirpath; do
+        printf '%s\t%s\0' "$(get_size_bytes "$dirpath")" "$dirpath"
+    done < <(find "$path" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null || true) \
+        | sort -z -rn > "$results_tmp"
 
-    if [[ -z "$results" ]]; then
+    local -a sizes=()
+    local -a paths=()
+    local record bytes dirpath
+    while IFS= read -r -d '' record; do
+        bytes="${record%%$'\t'*}"
+        dirpath="${record#*$'\t'}"
+        sizes+=("$bytes")
+        paths+=("$dirpath")
+        (( ${#paths[@]} >= top )) && break
+    done < "$results_tmp"
+    rm -f "$results_tmp"
+
+    if [[ ${#paths[@]} -eq 0 ]]; then
         print_info "No subdirectories found in $path"
-        return 0
+    else
+        echo ""
     fi
 
-    echo ""
-    local rank=1
-    while IFS=$'\t' read -r bytes dirpath; do
+    local i
+    for i in "${!paths[@]}"; do
+        bytes="${sizes[$i]}"
+        dirpath="${paths[$i]}"
         local formatted_size
         formatted_size=$(format_size "$bytes")
         local name="${dirpath%/}"
-        printf "    %2d. %-12s %s\n" "$rank" "$formatted_size" "$name"
-        rank=$((rank + 1))
-    done <<< "$results"
+        printf "    %2d. %-12s %s\n" "$((i + 1))" "$formatted_size" "$name"
+    done
+
+    if [[ "${FORMAT:-text}" == "json" ]]; then
+        local items="[" first=true
+        for i in "${!paths[@]}"; do
+            [[ "$first" == true ]] && first=false || items+=","
+            items+="$(to_json_kv "bytes" "${sizes[$i]}" "path" "${paths[$i]}")"
+        done
+        items+="]"
+        json_output "{\"mode\":\"folders\",\"path\":$(json_quote "$path"),\"items\":${items}}"
+    fi
 
     echo ""
 }
@@ -310,42 +388,64 @@ disk_file_types() {
 
     print_header "Disk Usage by File Type: $path"
 
-    local results
-    results=$(find "$path" -type f -printf '%s %f\n' 2>/dev/null | awk '
-    {
-        size = $1
-        filename = $2
-        # Extract extension
-        n = split(filename, parts, ".")
-        if (n > 1 && length(parts[n]) <= 10) {
-            ext = tolower(parts[n])
-        } else {
-            ext = "(no ext)"
-        }
-        total[ext] += size
-        count[ext]++
-    }
-    END {
-        for (ext in total) {
-            printf "%d\t%d\t%s\n", total[ext], count[ext], ext
-        }
-    }
-    ' | sort -rn || true)
+    local -A totals=()
+    local -A counts=()
+    local record bytes filename ext
+    while IFS= read -r -d '' record; do
+        bytes="${record%%$'\t'*}"
+        filename="${record#*$'\t'}"
+        ext="(no ext)"
+        if [[ "$filename" == *.* ]]; then
+            local candidate="${filename##*.}"
+            if [[ -n "$candidate" && ${#candidate} -le 10 && "$candidate" =~ ^[[:alnum:]_+-]+$ ]]; then
+                ext="${candidate,,}"
+            fi
+        fi
+        totals["$ext"]=$(( ${totals["$ext"]:-0} + bytes ))
+        counts["$ext"]=$(( ${counts["$ext"]:-0} + 1 ))
+    done < <(find "$path" -type f -printf '%s\t%f\0' 2>/dev/null || true)
 
-    if [[ -z "$results" ]]; then
+    local results_tmp
+    results_tmp=$(mktemp)
+    for ext in "${!totals[@]}"; do
+        printf '%s\t%s\t%s\0' "${totals[$ext]}" "${counts[$ext]}" "$ext"
+    done | sort -z -rn > "$results_tmp"
+
+    if [[ ${#totals[@]} -eq 0 ]]; then
         print_info "No files found in $path"
-        return 0
+    else
+        echo ""
+        printf "    %-12s  %8s  %s\n" "SIZE" "COUNT" "EXTENSION"
+        printf "    %-12s  %8s  %s\n" "────────────" "────────" "─────────"
     fi
 
-    echo ""
-    printf "    %-12s  %8s  %s\n" "SIZE" "COUNT" "EXTENSION"
-    printf "    %-12s  %8s  %s\n" "────────────" "────────" "─────────"
+    local -a result_bytes=()
+    local -a result_counts=()
+    local -a result_exts=()
+    local count display_ext
+    while IFS= read -r -d '' record; do
+        bytes="${record%%$'\t'*}"
+        local remainder="${record#*$'\t'}"
+        count="${remainder%%$'\t'*}"
+        ext="${remainder#*$'\t'}"
+        result_bytes+=("$bytes")
+        result_counts+=("$count")
+        result_exts+=("$ext")
+        display_ext="$ext"
+        [[ "$ext" != "(no ext)" ]] && display_ext=".$ext"
+        printf "    %-12s  %8d  %s\n" "$(format_size "$bytes")" "$count" "$display_ext"
+    done < "$results_tmp"
+    rm -f "$results_tmp"
 
-    while IFS=$'\t' read -r bytes count ext; do
-        local formatted_size
-        formatted_size=$(format_size "$bytes")
-        printf "    %-12s  %8d  .%s\n" "$formatted_size" "$count" "$ext"
-    done <<< "$results"
+    if [[ "${FORMAT:-text}" == "json" ]]; then
+        local items="[" first=true i
+        for i in "${!result_exts[@]}"; do
+            [[ "$first" == true ]] && first=false || items+=","
+            items+="$(to_json_kv "bytes" "${result_bytes[$i]}" "count" "${result_counts[$i]}" "extension" "${result_exts[$i]}")"
+        done
+        items+="]"
+        json_output "{\"mode\":\"types\",\"path\":$(json_quote "$path"),\"items\":${items}}"
+    fi
 
     echo ""
 }
@@ -360,23 +460,40 @@ disk_old_files() {
     print_info "Scanning..."
     local results_tmp
     results_tmp=$(mktemp)
-    (find "$path" -type f -mtime +90 -printf '%s\t%T+\t%p\n' 2>/dev/null | sort -rn | head -"$top" > "$results_tmp") &
-    show_progress $!
-    wait $! 2>/dev/null || true
-    local results
-    results=$(cat "$results_tmp")
+    (find "$path" -type f -mtime +90 -printf '%s\t%T+\t%p\0' 2>/dev/null | sort -z -rn > "$results_tmp" || true) &
+    local scan_pid=$!
+    show_progress "$scan_pid"
+    wait "$scan_pid" 2>/dev/null || true
+
+    local -a sizes=()
+    local -a mtimes=()
+    local -a paths=()
+    local record bytes remainder mtime filepath
+    while IFS= read -r -d '' record; do
+        bytes="${record%%$'\t'*}"
+        remainder="${record#*$'\t'}"
+        mtime="${remainder%%$'\t'*}"
+        filepath="${remainder#*$'\t'}"
+        sizes+=("$bytes")
+        mtimes+=("$mtime")
+        paths+=("$filepath")
+        (( ${#paths[@]} >= top )) && break
+    done < "$results_tmp"
     rm -f "$results_tmp"
 
-    if [[ -z "$results" ]]; then
+    if [[ ${#paths[@]} -eq 0 ]]; then
         print_info "No files older than 90 days found in $path"
-        return 0
+    else
+        echo ""
+        printf "    %-12s  %-20s  %s\n" "SIZE" "LAST MODIFIED" "PATH"
+        printf "    %-12s  %-20s  %s\n" "────────────" "────────────────────" "────"
     fi
 
-    echo ""
-    printf "    %-12s  %-20s  %s\n" "SIZE" "LAST MODIFIED" "PATH"
-    printf "    %-12s  %-20s  %s\n" "────────────" "────────────────────" "────"
-
-    while IFS=$'\t' read -r bytes mtime filepath; do
+    local i
+    for i in "${!paths[@]}"; do
+        bytes="${sizes[$i]}"
+        mtime="${mtimes[$i]}"
+        filepath="${paths[$i]}"
         local formatted_size
         formatted_size=$(format_size "$bytes")
         # Trim the fractional seconds from the timestamp for cleaner display
@@ -384,15 +501,16 @@ disk_old_files() {
         # Replace the T with a space for readability
         date_display="${date_display//T/ }"
         printf "    %-12s  %-20s  %s\n" "$formatted_size" "$date_display" "$filepath"
-    done <<< "$results"
+    done
 
     if [[ "${FORMAT:-text}" == "json" ]]; then
         local items="[" jfirst=true
-        while IFS=$'\t' read -r bytes mtime filepath; do
+        for i in "${!paths[@]}"; do
             [[ "$jfirst" == true ]] && jfirst=false || items+=","
-            items+="$(to_json_kv "bytes" "$bytes" "modified" "$mtime" "path" "$filepath")"
-        done <<< "$results"
-        json_output "{\"mode\":\"old\",\"path\":\"$path\",\"items\":${items}]}"
+            items+="$(to_json_kv "bytes" "${sizes[$i]}" "modified" "${mtimes[$i]}" "path" "${paths[$i]}")"
+        done
+        items+="]"
+        json_output "{\"mode\":\"old\",\"path\":$(json_quote "$path"),\"items\":${items}}"
     fi
 
     echo ""

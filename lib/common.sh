@@ -32,6 +32,7 @@ WSLMOLE_LOG_DIR="${HOME}/.local/share/wslmole"
 WSLMOLE_LOG_FILE="${WSLMOLE_LOG_DIR}/wslmole.log"
 WSLMOLE_CONFIG_FILE="${HOME}/.config/wslmole/config"
 WSLMOLE_LOG_LEVEL="INFO"
+WSLMOLE_PROBE_TIMEOUT="${WSLMOLE_PROBE_TIMEOUT:-2}"
 DRY_RUN=true
 FORCE=false
 VERBOSE=false
@@ -53,7 +54,7 @@ PROTECTED_PREFIXES=(
 )
 
 # ── Configuration ───────────────────────────────────────────────────
-VALID_CONFIG_KEYS="DRY_RUN FORCE VERBOSE WSLMOLE_LOG_LEVEL WSLMOLE_UPDATE_INTERVAL"
+VALID_CONFIG_KEYS="DRY_RUN FORCE VERBOSE WSLMOLE_LOG_LEVEL WSLMOLE_UPDATE_INTERVAL WSLMOLE_PROBE_TIMEOUT"
 
 # Warn about a config problem on stderr (so users actually see it) and log it.
 # stderr keeps stdout/JSON output clean for scripted consumers.
@@ -96,7 +97,12 @@ load_config() {
             VERBOSE)       [[ "$val" =~ ^(true|false)$ ]] && VERBOSE="$val" ;;
             WSLMOLE_LOG_LEVEL) [[ "$val" =~ ^(DEBUG|INFO|WARN|ERROR)$ ]] && WSLMOLE_LOG_LEVEL="$val" ;;
             WSLMOLE_UPDATE_INTERVAL) [[ "$val" =~ ^[0-9]+$ ]] && WSLMOLE_UPDATE_INTERVAL="$val" ;;
+            WSLMOLE_PROBE_TIMEOUT)
+                [[ "$val" =~ ^[0-9]+$ ]] && (( val >= 1 && val <= 30 )) && WSLMOLE_PROBE_TIMEOUT="$val"
+                ;;
         esac
+        # Invalid values are ignored. Keep load_config successful under `set -e`.
+        true
     done < "$WSLMOLE_CONFIG_FILE"
 }
 
@@ -151,6 +157,40 @@ json_output() {
     fi
 }
 
+json_escape() {
+    local value="${1-}"
+    local escaped=""
+    local char code encoded
+    local i
+    local LC_ALL=C
+    for ((i = 0; i < ${#value}; i++)); do
+        char="${value:i:1}"
+        case "$char" in
+            '"') escaped+='\"' ;;
+            \\) escaped+=$'\\\\' ;;
+            $'\b') escaped+='\b' ;;
+            $'\f') escaped+='\f' ;;
+            $'\n') escaped+='\n' ;;
+            $'\r') escaped+='\r' ;;
+            $'\t') escaped+='\t' ;;
+            *)
+                printf -v code '%d' "'$char"
+                if (( code < 32 )); then
+                    printf -v encoded '\\u%04x' "$code"
+                    escaped+="$encoded"
+                else
+                    escaped+="$char"
+                fi
+                ;;
+        esac
+    done
+    printf '%s' "$escaped"
+}
+
+json_quote() {
+    printf '"%s"' "$(json_escape "${1-}")"
+}
+
 # Build JSON object from key=value arguments
 # Usage: to_json_kv "key1" "val1" "key2" "val2" ...
 to_json_kv() {
@@ -168,12 +208,7 @@ to_json_kv() {
         if [[ "$val" =~ ^-?[0-9]+\.?[0-9]*$ ]] || [[ "$val" =~ ^(true|false|null)$ ]]; then
             json+="\"${key}\":${val}"
         else
-            val="${val//\\/\\\\}"
-            val="${val//\"/\\\"}"
-            val="${val//$'\n'/\\n}"
-            val="${val//$'\t'/\\t}"
-            val="${val//$'\r'/\\r}"
-            json+="\"${key}\":\"${val}\""
+            json+="\"${key}\":$(json_quote "$val")"
         fi
     done
     json+="}"
@@ -209,6 +244,108 @@ get_size_bytes() {
         size=0
     fi
     [[ "$size" =~ ^[0-9]+$ ]] && echo "$size" || echo 0
+}
+
+# Run a read-only system probe with a hard deadline. GNU timeout is available
+# in the target WSL/Ubuntu environment; gtimeout supports macOS development.
+run_probe() {
+    local seconds="${1:-$WSLMOLE_PROBE_TIMEOUT}"
+    shift
+
+    if ! [[ "$seconds" =~ ^[0-9]+$ ]] || (( seconds < 1 )); then
+        return 2
+    fi
+
+    if command -v timeout >/dev/null 2>&1; then
+        timeout --signal=TERM --kill-after=1s "${seconds}s" "$@"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        gtimeout --signal=TERM --kill-after=1s "${seconds}s" "$@"
+    else
+        # Portable fallback for development environments without coreutils.
+        "$@" &
+        local command_pid=$!
+        (
+            sleep "$seconds"
+            kill -TERM "$command_pid" 2>/dev/null || exit 0
+            sleep 1
+            kill -KILL "$command_pid" 2>/dev/null || true
+        ) &
+        local timer_pid=$!
+        local rc=0
+        wait "$command_pid" || rc=$?
+        if kill -0 "$timer_pid" 2>/dev/null; then
+            kill "$timer_pid" 2>/dev/null || true
+            wait "$timer_pid" 2>/dev/null || true
+        else
+            wait "$timer_pid" 2>/dev/null || true
+            if [[ $rc -eq 137 || $rc -eq 143 ]]; then
+                return 124
+            fi
+        fi
+        return "$rc"
+    fi
+}
+
+validate_integer_option() {
+    local value="$1"
+    local option_name="$2"
+    local minimum="${3:-0}"
+    local maximum="${4:-2147483647}"
+
+    if ! [[ "$value" =~ ^[0-9]+$ ]]; then
+        print_error "$option_name requires an integer"
+        return 1
+    fi
+    if (( value < minimum || value > maximum )); then
+        print_error "$option_name must be between $minimum and $maximum"
+        return 1
+    fi
+}
+
+sum_files_older_than() {
+    local dir="$1"
+    local days="${2:-7}"
+    local total=0
+    local size
+    [[ -d "$dir" ]] || { printf '0\n'; return 0; }
+    while IFS= read -r -d '' size; do
+        [[ "$size" =~ ^[0-9]+$ ]] || continue
+        total=$((total + size))
+    done < <(find "$dir" -type f -mtime "+$days" -printf '%s\0' 2>/dev/null || true)
+    printf '%s\n' "$total"
+}
+
+sum_rotated_log_bytes() {
+    local log_dir="${1:-/var/log}"
+    local total=0
+    local size
+    [[ -d "$log_dir" ]] || { printf '0\n'; return 0; }
+    while IFS= read -r -d '' size; do
+        [[ "$size" =~ ^[0-9]+$ ]] || continue
+        total=$((total + size))
+    done < <(find "$log_dir" -type f \
+        \( -name "*.gz" -o -name "*.old" -o -name "*.1" -o -name "*.2" -o -name "*.3" \) \
+        -printf '%s\0' 2>/dev/null || true)
+    printf '%s\n' "$total"
+}
+
+# Print "<count> <bytes>" for disabled revisions in snap-list output.
+snap_disabled_stats() {
+    local snap_output="${1-}"
+    local snap_dir="${2:-/var/lib/snapd/snaps}"
+    local count=0
+    local bytes=0
+    local snap_name snap_rev snap_file
+
+    while read -r snap_name snap_rev; do
+        [[ "$snap_name" =~ ^[a-z0-9][a-z0-9-]*$ ]] || continue
+        [[ "$snap_rev" =~ ^[0-9]+$ ]] || continue
+        count=$((count + 1))
+        snap_file="$snap_dir/${snap_name}_${snap_rev}.snap"
+        bytes=$((bytes + $(get_size_bytes "$snap_file")))
+    done < <(printf '%s\n' "$snap_output" | awk '$NF == "disabled" {print $1, $3}')
+
+    printf '%s %s\n' "$count" "$bytes"
 }
 
 # ── Safety ──────────────────────────────────────────────────────────
@@ -265,7 +402,10 @@ is_protected_path() {
 # Returns empty if interop is unavailable or the name contains unsafe chars.
 get_windows_username() {
     local name
-    name=$(cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r\n' || true)
+    if ! command -v cmd.exe >/dev/null 2>&1; then
+        return 0
+    fi
+    name=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" cmd.exe /c "echo %USERNAME%" 2>/dev/null | tr -d '\r\n' || true)
     if [[ -n "$name" && ! "$name" =~ ^[A-Za-z0-9][A-Za-z0-9\ ._-]*$ ]]; then
         log_warn "Ignoring Windows username with unexpected characters"
         name=""
@@ -449,6 +589,19 @@ safe_delete() {
         log_warn "FAILED: could not delete $path"
         return 3
     fi
+}
+
+# Consume NUL-delimited absolute paths and route every deletion through the
+# same validation and audit path as a single safe_delete call.
+safe_delete_nul_stream() {
+    local description="${1:-item}"
+    local path
+    local rc=0
+    while IFS= read -r -d '' path; do
+        [[ -n "$path" ]] || continue
+        safe_delete "$path" "$description: $(basename "$path")" || rc=1
+    done
+    return "$rc"
 }
 
 # ── WSL Detection ───────────────────────────────────────────────────

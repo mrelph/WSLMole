@@ -95,7 +95,7 @@ These are recognized only **before** the command (the first non-flag token):
 | `-v, --verbose` | Enable session logging to `~/.local/share/wslmole/wslmole.log`. |
 | `--no-color` | Disable colored output. |
 | `--format text\|json` | Set output format (default `text`). |
-| `-y, --yes` | Skip confirmation prompts; this is the real "force" switch (sets `FORCE=true`, `DRY_RUN=false`). |
+| `-y, --yes` | Skip confirmation prompts and disable dry-run (sets `FORCE=true`, `DRY_RUN=false`). |
 
 ---
 
@@ -108,7 +108,7 @@ wslmole scan
 wslmole --format json scan   # machine-readable score + recommendations
 ```
 
-Computes a health score (0–100) and grade (Excellent ≥ 90, Good ≥ 70, Fair ≥ 50, else Poor), applying penalties for high memory/disk usage, failed services, a missing `.wslconfig`, and pending APT updates.
+Computes a health score (0–100) and grade (Excellent ≥ 90, Good ≥ 70, Fair ≥ 50, else Poor), applying penalties for high memory/disk usage, failed services, a missing `.wslconfig`, and pending APT updates. External probes have a configurable deadline and are reported under `skipped_checks` when unavailable.
 
 ### plan — Action Plan (read-only)
 
@@ -138,7 +138,8 @@ wslmole clean apt logs       # clean specific categories positionally
 wslmole clean -c apt,snap    # or via -c/--category
 wslmole clean all            # all 7 categories
 wslmole clean --dry-run      # preview only (this is already the default)
-wslmole --yes clean          # actually delete (note: --yes goes BEFORE the command)
+wslmole clean --yes          # actually delete; -f/--force also works here
+wslmole --yes clean          # equivalent global form
 ```
 
 Categories: `apt`, `snap`, `logs`, `tmp` (alias `temp`), `browser`, `user` (alias `userdata`), `wsl`. The default set omits `browser` and `user`, which are opt-in.
@@ -155,7 +156,7 @@ wslmole disk -m types            # usage grouped by file extension
 wslmole disk -m old              # files not modified in 90+ days
 ```
 
-Modes: `summary`, `tree`, `files`, `folders`, `types`, `old`. The top-results flag is `-n, --top` (default 10); tree depth is `-d, --depth` (default 3).
+Modes: `summary`, `tree`, `files`, `folders`, `types`, `old`. The top-results flag accepts 1–1000 via `-n, --top` (default 10); tree depth accepts 0–20 via `-d, --depth` (default 3). Every mode supports JSON output.
 
 ### dev — Developer Cleanup
 
@@ -233,17 +234,16 @@ Running `wslmole` with no arguments starts a quick health scan. Use `wslmole -i`
 
 WSLMole is conservative by design:
 
-- **Dry-run by default** — `DRY_RUN=true` globally. `clean`, `dev`, and `fix` only **preview** changes. To actually delete or apply, pass the global `-y/--yes` flag (which sets `DRY_RUN=false`) **before** the command, or confirm at the interactive prompt.
+- **Dry-run by default** — `DRY_RUN=true` globally. `clean`, `dev`, and `fix` only **preview** changes. To actually delete or apply, use the global `-y/--yes` flag before the command, use `-f/--force/--yes` after `clean` or `dev`, or confirm at the interactive prompt.
 - **Protected paths** — critical system directories (`/`, `/bin`, `/boot`, `/etc`, `/usr`, `/lib`, and more) are never deleted, and nothing inside protected trees can be removed. Deletions go through a `safe_delete` guard that refuses relative paths, `..` components, and protected locations.
+- **Consistent deletion path** — cleanup batches are NUL-delimited and every selected file or directory is routed through `safe_delete` for validation and logging.
 - **Root awareness** — APT operations and journal vacuuming require root and are skipped with a warning otherwise.
 - **Confirmation prompts** — destructive actions require explicit approval unless `--yes` (or `FORCE=true` in config) is set.
 - **Verifiable updates** — self-update verifies the remote origin, prefers GPG-signed tags, and stashes local changes only with your consent.
 
-> **Tip:** The `-f/--force` flag shown in some command help text is not implemented by `clean` or `dev` — passing it *after* those commands errors out. The real force switch is the global `--yes/-y` placed *before* the command.
-
 ### Configuration
 
-Optional config lives at `~/.config/wslmole/config` as strict `KEY=VALUE` lines (`#` comments and blank lines are ignored). Recognized keys: `DRY_RUN`, `FORCE`, `VERBOSE`, `WSLMOLE_LOG_LEVEL`, `WSLMOLE_UPDATE_INTERVAL`. Unknown keys, malformed lines, and unsafe values are rejected with a warning. See `docs/config.example`.
+Optional config lives at `~/.config/wslmole/config` as strict `KEY=VALUE` lines (`#` comments and blank lines are ignored). Recognized keys: `DRY_RUN`, `FORCE`, `VERBOSE`, `WSLMOLE_LOG_LEVEL`, `WSLMOLE_UPDATE_INTERVAL`, `WSLMOLE_PROBE_TIMEOUT`. Unknown keys, malformed lines, and unsafe values are rejected with a warning. See `docs/config.example`.
 
 ---
 

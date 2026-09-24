@@ -24,6 +24,11 @@ cmd_clean() {
                 DRY_RUN=true
                 shift
                 ;;
+            -f|--force|--yes)
+                FORCE=true
+                DRY_RUN=false
+                shift
+                ;;
             -c|--category)
                 if [[ -z "${2:-}" ]]; then
                     print_error "--category requires a comma-separated list"
@@ -124,7 +129,7 @@ cmd_clean_help() {
     echo ""
     echo -e "${BOLD}Options:${NC}"
     echo -e "  ${BOLD}-n${NC}, ${BOLD}--dry-run${NC}          Preview what would be cleaned without deleting"
-    echo -e "  ${BOLD}-f${NC}, ${BOLD}--force${NC}            Skip all confirmation prompts"
+    echo -e "  ${BOLD}-f${NC}, ${BOLD}--force${NC}, ${BOLD}--yes${NC}     Skip all confirmation prompts"
     echo -e "  ${BOLD}-c${NC}, ${BOLD}--category${NC} LIST    Comma-separated categories to clean"
     echo -e "  ${BOLD}-h${NC}, ${BOLD}--help${NC}             Show this help message"
     echo ""
@@ -245,7 +250,12 @@ clean_snap() {
 
     # Find disabled snap revisions
     local disabled_snaps
-    disabled_snaps=$(snap list --all 2>/dev/null | awk '/disabled/{print $1, $3}')
+    local snap_output
+    if ! snap_output=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" snap list --all 2>/dev/null); then
+        print_warning "Snap service did not respond within ${WSLMOLE_PROBE_TIMEOUT}s - skipping"
+        return 0
+    fi
+    disabled_snaps=$(printf '%s\n' "$snap_output" | awk '/disabled/{print $1, $3}')
 
     if [[ -z "$disabled_snaps" ]]; then
         print_success "No disabled snap revisions found"
@@ -319,7 +329,7 @@ clean_logs() {
         if require_root_or_skip "journalctl vacuum"; then
             if [[ "$DRY_RUN" == true ]]; then
                 local journal_size
-                journal_size=$(journalctl --disk-usage 2>/dev/null | grep -oP '[\d.]+\s*[KMGT]?i?B' || echo "unknown")
+                journal_size=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" journalctl --disk-usage 2>/dev/null | grep -oP '[\d.]+\s*[KMGT]?i?B' || echo "unknown")
                 print_info "[DRY RUN] Would vacuum journalctl to 7 days (current usage: $journal_size)"
             else
                 if confirm "Vacuum journalctl logs older than 7 days?"; then
@@ -382,7 +392,9 @@ clean_tmp() {
             print_info "[DRY RUN] Would offer to clean ~/.cache contents"
         else
             if confirm "Clean ~/.cache contents? (keeps directory structure)"; then
-                find "$user_cache" -type f -mtime +7 -delete 2>/dev/null
+                safe_delete_nul_stream "old cache file" \
+                    < <(find "$user_cache" -type f -mtime +7 -print0 2>/dev/null || true) \
+                    || print_warning "Some old cache files could not be deleted"
                 local new_size
                 new_size=$(get_size_bytes "$user_cache")
                 print_success "Cleaned old cache files (now $(format_size "$new_size"))"
@@ -435,7 +447,9 @@ clean_browser() {
             else
                 if confirm "Clean $browser cache?"; then
                     if [[ -d "$cache_dir" ]]; then
-                        find "$cache_dir" -type f -delete 2>/dev/null
+                        safe_delete_nul_stream "$browser cache file" \
+                            < <(find "$cache_dir" -type f -print0 2>/dev/null || true) \
+                            || print_warning "Some $browser cache files could not be deleted"
                         print_success "Cleaned $browser cache"
                     fi
                 else
@@ -482,8 +496,16 @@ clean_user() {
             print_info "[DRY RUN] Would empty trash"
         else
             if confirm "Empty trash?"; then
-                find "${trash_dir:?}/files" -mindepth 1 -delete 2>/dev/null
-                find "${trash_dir:?}/info" -mindepth 1 -delete 2>/dev/null
+                if [[ -d "$trash_dir/files" ]]; then
+                    safe_delete_nul_stream "trash item" \
+                        < <(find "$trash_dir/files" -mindepth 1 -maxdepth 1 -print0 2>/dev/null || true) \
+                        || print_warning "Some trash items could not be deleted"
+                fi
+                if [[ -d "$trash_dir/info" ]]; then
+                    safe_delete_nul_stream "trash metadata" \
+                        < <(find "$trash_dir/info" -mindepth 1 -maxdepth 1 -print0 2>/dev/null || true) \
+                        || print_warning "Some trash metadata could not be deleted"
+                fi
                 print_success "Trash emptied"
             else
                 print_info "Skipped trash cleanup"

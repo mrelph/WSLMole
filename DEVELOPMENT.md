@@ -70,10 +70,9 @@ when editing):
 - **Global flags are only recognized BEFORE the first non-flag token** (the
   command). Once a command is identified, every remaining argument is appended
   to `args[]` verbatim and forwarded to the subcommand — including unknown
-  `-*` flags seen before the command. This is why `--yes`/`-y` (the real force
-  switch) must come *before* the command, and why `clean -f` / `dev -f` fail:
-  their own parsers have no `-f`/`--force` case despite the help text. Do not
-  document `clean -f` / `dev -f` as working.
+  `-*` flags seen before the command. `clean` and `dev` also recognize
+  `-f`/`--force`/`--yes` in their own parsers, so those execution flags may be
+  placed after either command.
 - With **no command and no action flag**, `wslmole` runs `run_quick_scan`.
 - Global action flags exit immediately: `-h/--help` (`show_usage`),
   `--version`, `-i/--interactive` (`run_interactive_menu`), `-q/--quick`
@@ -91,7 +90,7 @@ module file), but `fix` delegates entirely to the plan engine in `lib/plan.sh`.
 
 | Module | Entry point(s) | Responsibility |
 |--------|----------------|----------------|
-| `common.sh` | sourced by all | Colors (`_init_colors`, NO_COLOR/TTY aware), global state defaults (`DRY_RUN=true`, `FORCE=false`, `VERBOSE=false`), `PROTECTED_PATHS`/`PROTECTED_PREFIXES`, config loading/validation (`load_config`, `VALID_CONFIG_KEYS`), `safe_delete`/`validate_path`/`is_protected_path`, `confirm`, `require_root_or_skip`, `is_wsl`, `format_size`/`get_size_bytes`, logging (`init_logging`, `log_*`), `json_output`, `suggest_correction`, print helpers |
+| `common.sh` | sourced by all | Colors, global state, config validation, protected paths, `safe_delete`/`safe_delete_nul_stream`, bounded `run_probe`, numeric validation, exact cleanup-size collectors, JSON encoding, logging, WSL detection, and print helpers |
 | `clean.sh` | `cmd_clean`, `cmd_clean_category` | System cleanup across 7 categories (apt, snap, logs, tmp, browser, user, wsl). Default set: apt,snap,logs,tmp,wsl |
 | `disk.sh` | `cmd_disk`, `cmd_disk_mode` | Disk usage analysis: summary, tree, files, folders, types, old |
 | `dev.sh` | `cmd_dev`, `cmd_dev_scan` | Developer artifact cleanup (node_modules, target, `__pycache__`, etc.) via `find -prune` + `safe_delete` |
@@ -225,6 +224,9 @@ Implemented in `lib/update.sh`. Self-update only works from a Git checkout
 - **Periodic background check:** `maybe_check_for_updates` runs at startup at
   most once per `WSLMOLE_UPDATE_INTERVAL` (default `86400`s / 24h). It is
   skipped in JSON mode and non-TTY contexts.
+- **Bounded read-only probes:** Snap, APT, systemd, and Windows interop checks
+  run through `run_probe` with `WSLMOLE_PROBE_TIMEOUT` (default 2 seconds).
+  A timeout produces a partial result and a `skipped_checks` entry.
 
 ## Safety Model
 
@@ -238,6 +240,8 @@ that deletes files.
   `..` components and `/`, and refuses protected paths. Return codes:
   `0` success, `1` blocked, `2` not-found, `3` permission-denied. In dry-run it
   logs `[DRY RUN] Would delete`.
+- **`safe_delete_nul_stream`** consumes NUL-delimited paths and routes each one
+  through `safe_delete`; cleanup modules do not use direct `find -delete`.
 - **`PROTECTED_PATHS`** (exact match, never deleted): `/ /bin /boot /dev /etc
   /home /lib /lib64 /media /mnt /opt /proc /root /run /sbin /srv /sys /usr
   /var /usr/bin /usr/lib /usr/lib64 /usr/sbin`.
@@ -259,7 +263,7 @@ rejected with a warning on stderr; only values matching each key's pattern are
 applied.
 
 `VALID_CONFIG_KEYS`: `DRY_RUN FORCE VERBOSE WSLMOLE_LOG_LEVEL
-WSLMOLE_UPDATE_INTERVAL`.
+WSLMOLE_UPDATE_INTERVAL WSLMOLE_PROBE_TIMEOUT`.
 
 | Key | Type / default | Effect |
 |-----|----------------|--------|
@@ -268,6 +272,7 @@ WSLMOLE_UPDATE_INTERVAL`.
 | `VERBOSE` | `true`\|`false` (default `false`) | Enables session logging to `WSLMOLE_LOG_FILE` |
 | `WSLMOLE_LOG_LEVEL` | `DEBUG`\|`INFO`\|`WARN`\|`ERROR` (default `INFO`) | Gates which `log_*` messages are written |
 | `WSLMOLE_UPDATE_INTERVAL` | integer seconds (default `86400`) | Background update-check frequency |
+| `WSLMOLE_PROBE_TIMEOUT` | integer 1–30 seconds (default `2`) | Deadline for read-only external probes |
 
 See `docs/config.example` for an annotated template. Logs (when `VERBOSE`)
 go to `~/.local/share/wslmole/wslmole.log`, rotated at ~1 MB.
@@ -296,7 +301,8 @@ development convenience:
   `cmd_<name>_<unit>` trio in a new `lib/<name>.sh`, and are wired into
   `main()`'s dispatch `case` plus the `help <command>` and `suggest_correction`
   command lists in `wslmole`.
-- All destructive actions go through `safe_delete` and respect `DRY_RUN`.
+- All destructive actions go through `safe_delete` directly or through
+  `safe_delete_nul_stream`, and respect `DRY_RUN`.
 - Reach the caller's stdout only via `json_output` when `FORMAT=json`; keep
   human output on stderr in JSON mode.
 - Add or update a `tests/test_*.sh` suite for behavior changes.

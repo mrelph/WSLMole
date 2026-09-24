@@ -3,6 +3,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$PROJECT_ROOT/lib/common.sh"
+source "$PROJECT_ROOT/lib/disk.sh"
 
 TESTS_RUN=0
 TESTS_PASSED=0
@@ -62,6 +63,41 @@ result=$(get_size_bytes "$TEST_DIR/nonexistent")
 
 result=$(get_size_bytes "$TEST_DIR")
 [[ "$result" -ge 0 ]] && pass "get_size_bytes: directory returns >= 0" || fail "get_size_bytes: dir" ">= 0" "$result"
+
+# Numeric options reject malformed or unreasonable values.
+if cmd_disk "$TEST_DIR" --top nope >/dev/null 2>&1; then
+    fail "cmd_disk: invalid --top" "non-zero exit" "zero exit"
+else
+    pass "cmd_disk: invalid --top exits non-zero"
+fi
+
+if cmd_disk "$TEST_DIR" --depth 21 >/dev/null 2>&1; then
+    fail "cmd_disk: excessive --depth" "non-zero exit" "zero exit"
+else
+    pass "cmd_disk: excessive --depth exits non-zero"
+fi
+
+# Every disk mode emits parseable JSON, including unusual filenames.
+mkdir -p "$TEST_DIR/sub dir"
+printf 'abc' > "$TEST_DIR/sub dir/"$'line\nbreak.txt'
+printf '12345' > "$TEST_DIR/name with spaces.log"
+if command -v python3 >/dev/null 2>&1; then
+    for mode in summary tree files folders types old; do
+        json=$("$PROJECT_ROOT/wslmole" --format json disk "$TEST_DIR" -m "$mode" -n 10 2>/dev/null)
+        if printf '%s\n' "$json" | python3 -m json.tool >/dev/null 2>&1; then
+            pass "disk $mode: emits parseable JSON"
+        else
+            fail "disk $mode: emits parseable JSON" "valid JSON" "$json"
+        fi
+    done
+
+    json=$("$PROJECT_ROOT/wslmole" --format json disk "$TEST_DIR" -m files -n 10 2>/dev/null)
+    if printf '%s\n' "$json" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert any("\n" in item["path"] for item in data["items"])'; then
+        pass "disk files: preserves newline-containing filename in JSON"
+    else
+        fail "disk files: preserves unusual filename" "newline path" "$json"
+    fi
+fi
 
 echo ""
 echo "=========================="

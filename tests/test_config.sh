@@ -63,6 +63,17 @@ echo 'UNKNOWN_KEY=bad' > "$WSLMOLE_CONFIG_FILE"
 stdout_out=$(load_config 2>/dev/null)
 [[ -z "$stdout_out" ]] && pass "warnings stay off stdout" || fail "warnings stay off stdout"
 
+# Test 8: Probe timeout accepts only the documented range
+WSLMOLE_CONFIG_FILE="$TEST_DIR/config_probe"
+echo 'WSLMOLE_PROBE_TIMEOUT=5' > "$WSLMOLE_CONFIG_FILE"
+WSLMOLE_PROBE_TIMEOUT=2
+load_config
+[[ "$WSLMOLE_PROBE_TIMEOUT" == "5" ]] && pass "config sets probe timeout" || fail "config sets probe timeout"
+
+echo 'WSLMOLE_PROBE_TIMEOUT=0' > "$WSLMOLE_CONFIG_FILE"
+load_config
+[[ "$WSLMOLE_PROBE_TIMEOUT" == "5" ]] && pass "config rejects out-of-range probe timeout" || fail "config rejects out-of-range probe timeout"
+
 echo ""
 echo "============================="
 echo "Tests run: $TESTS_RUN"

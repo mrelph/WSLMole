@@ -4,6 +4,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WSLMOLE="$PROJECT_ROOT/wslmole"
 
+TEST_BIN=$(mktemp -d)
+trap 'rm -rf "$TEST_BIN"' EXIT
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TEST_BIN/snap"
+chmod +x "$TEST_BIN/snap"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TEST_BIN/cmd.exe"
+chmod +x "$TEST_BIN/cmd.exe"
+export PATH="$TEST_BIN:$PATH"
+export WSLMOLE_PROBE_TIMEOUT=1
+
 TESTS_RUN=0
 TESTS_PASSED=0
 TESTS_FAILED=0
@@ -312,6 +321,38 @@ elif [[ "$nocmd_json" == \{* ]]; then
     pass "no-command JSON stdout starts with JSON"
 else
     fail "no-command JSON stdout starts with JSON"
+fi
+
+# Test 37: numeric options fail with a useful non-zero status
+if "$WSLMOLE" disk /tmp --top nope >/dev/null 2>&1; then
+    fail "invalid numeric disk option should exit non-zero"
+else
+    pass "invalid numeric disk option exits non-zero"
+fi
+
+# Test 38: force flags work after destructive subcommands
+output=$("$WSLMOLE" clean --yes invalid_category 2>&1 || true)
+if [[ "$output" != *"Unknown cleanup category"* ]]; then
+    fail "clean --yes should reach and reject invalid category"
+else
+    pass "clean accepts --yes after the command"
+fi
+
+output=$("$WSLMOLE" dev --yes /path/that/does/not/exist 2>&1 || true)
+if [[ "$output" != *"Path does not exist"* ]]; then
+    fail "dev --yes should reach and reject nonexistent path"
+else
+    pass "dev accepts --yes after the command"
+fi
+
+# Test 40: a hanging external probe yields partial JSON within the deadline
+printf '#!/usr/bin/env bash\nsleep 10\n' > "$TEST_BIN/snap"
+chmod +x "$TEST_BIN/snap"
+probe_json=$(timeout 5s "$WSLMOLE" --format json scan 2>/dev/null || true)
+if printf '%s\n' "$probe_json" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert "snap" in data["skipped_checks"]' 2>/dev/null; then
+    pass "scan bounds hanging probes and reports skipped_checks"
+else
+    fail "scan should bound and report a hanging probe"
 fi
 
 echo ""

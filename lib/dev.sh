@@ -24,6 +24,11 @@ cmd_dev() {
                 DRY_RUN=true
                 shift
                 ;;
+            -f|--force|--yes)
+                FORCE=true
+                DRY_RUN=false
+                shift
+                ;;
             -t|--types)
                 if [[ -z "${2:-}" ]]; then
                     print_error "--types requires a comma-separated list"
@@ -38,6 +43,9 @@ cmd_dev() {
                     return 1
                 fi
                 older_than="$2"
+                if ! validate_integer_option "$older_than" "--older-than" 0 36500; then
+                    return 1
+                fi
                 shift 2
                 ;;
             -h|--help)
@@ -100,9 +108,9 @@ cmd_dev_help() {
     echo ""
     echo -e "${BOLD}Options:${NC}"
     echo -e "  ${BOLD}-n, --dry-run${NC}          Preview what would be cleaned without deleting"
-    echo -e "  ${BOLD}-f, --force${NC}            Skip all confirmation prompts"
+    echo -e "  ${BOLD}-f, --force, --yes${NC}     Skip all confirmation prompts"
     echo -e "  ${BOLD}-t, --types${NC} LIST       Comma-separated artifact types to target"
-    echo -e "  ${BOLD}--older-than${NC} DAYS      Only target artifacts older than DAYS days"
+    echo -e "  ${BOLD}--older-than${NC} DAYS      Only target artifacts older than 0-36500 days"
     echo -e "  ${BOLD}-h, --help${NC}             Show this help message"
     echo ""
     echo -e "${BOLD}Artifact Types:${NC}"
@@ -136,6 +144,10 @@ cmd_dev_scan() {
     local older_than="${2:-}"
     shift 2 2>/dev/null || true
     local types=("$@")
+
+    if [[ -n "$older_than" ]]; then
+        validate_integer_option "$older_than" "--older-than" 0 36500 || return 1
+    fi
 
     # Default types if none passed (supports call from menu_dev with just path)
     if [[ ${#types[@]} -eq 0 ]]; then
@@ -179,12 +191,12 @@ cmd_dev_scan() {
     local found_artifacts=()
     local find_tmp
     find_tmp=$(mktemp)
-    find "$path" -type d \( "${find_args[@]}" \) -prune 2>/dev/null > "$find_tmp" &
+    find "$path" -type d \( "${find_args[@]}" \) -prune -print0 2>/dev/null > "$find_tmp" &
     local find_pid=$!
     print_info "Scanning for artifacts..."
     show_progress $find_pid
     wait $find_pid 2>/dev/null || true
-    while IFS= read -r dir; do
+    while IFS= read -r -d '' dir; do
         [[ -n "$dir" ]] || continue
         found_artifacts+=("$dir")
     done < "$find_tmp"
@@ -192,8 +204,11 @@ cmd_dev_scan() {
 
     local count=0
     local total_size=0
+    local delete_failures=0
+    local -a result_paths=()
+    local -a result_sizes=()
 
-    for artifact in "${found_artifacts[@]+${found_artifacts[@]}}"; do
+    for artifact in "${found_artifacts[@]+"${found_artifacts[@]}"}"; do
         # If older_than is set, check modification time
         if [[ -n "$older_than" ]]; then
             local mtime_days
@@ -213,18 +228,26 @@ cmd_dev_scan() {
 
         count=$((count + 1))
         total_size=$((total_size + size))
+        result_paths+=("$artifact")
+        result_sizes+=("$size")
 
         if [[ "$DRY_RUN" == true ]]; then
             print_item "$rel_path ($(format_size "$size"))"
         else
-            safe_delete "$artifact" "$rel_path"
+            safe_delete "$artifact" "$rel_path" || delete_failures=$((delete_failures + 1))
         fi
     done
 
     # Summary
     echo ""
     if [[ "${FORMAT:-text}" == "json" ]]; then
-        json_output "$(to_json_kv "path" "$path" "count" "$count" "total_bytes" "$total_size" "dry_run" "$DRY_RUN")"
+        local items="[" first=true i
+        for i in "${!result_paths[@]}"; do
+            [[ "$first" == true ]] && first=false || items+=","
+            items+="$(to_json_kv "path" "${result_paths[$i]}" "bytes" "${result_sizes[$i]}")"
+        done
+        items+="]"
+        json_output "{\"path\":$(json_quote "$path"),\"count\":${count},\"total_bytes\":${total_size},\"dry_run\":${DRY_RUN},\"delete_failures\":${delete_failures},\"items\":${items}}"
     elif [[ $count -eq 0 ]]; then
         print_success "No developer artifacts found"
     else
@@ -234,4 +257,5 @@ cmd_dev_scan() {
             print_info "Run without --dry-run to delete these artifacts"
         fi
     fi
+    (( delete_failures == 0 ))
 }

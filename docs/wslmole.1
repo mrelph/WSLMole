@@ -31,7 +31,13 @@ and
 .B \-\-format
 must be placed
 .B before
-the command name.
+the command name. The
+.B clean
+and
+.B dev
+commands additionally accept
+.BR \-f / \-\-force / \-\-yes
+after the command name.
 .SH GLOBAL OPTIONS
 .TP
 .BR \-h ", " \-\-help
@@ -71,11 +77,14 @@ Execute changes (sets
 .B DRY_RUN=false
 and
 .BR FORCE=true )
-and skip all confirmation prompts. This is the real "force" switch for
+and skip all confirmation prompts. As a global flag it must be placed before
+the command;
 .B clean
 and
-.BR dev ;
-it must be placed before the command.
+.B dev
+also accept
+.BR \-f / \-\-force / \-\-yes
+after the command.
 .SH COMMANDS
 .TP
 .B clean \fR[\fIcategory...\fR] [\fIoptions\fR]
@@ -117,9 +126,11 @@ Show general usage, or help for a specific command.
 .B wslmole clean
 [\fIcategory...\fR] [\fIoptions\fR]
 .PP
-Cleanup runs in dry-run mode by default; pass the global
+Cleanup runs in dry-run mode by default; pass
+.BR \-f / \-\-force / \-\-yes
+after the command, or global
 .B \-\-yes
-flag to delete. Categories may be given positionally (for example
+before it, to delete. Categories may be given positionally (for example
 .BR "wslmole clean apt logs" )
 or via
 .BR \-c / \-\-category .
@@ -184,33 +195,22 @@ Preview only; perform no deletion (sets
 .BR DRY_RUN=true ).
 This is the default.
 .TP
+.BR \-f ", " \-\-force ", " \-\-yes
+Disable dry-run and skip confirmation prompts.
+.TP
 .BI \-c " LIST" "\fR, \fB" \-\-category " LIST"
 Comma-separated list of categories to clean.
 .TP
 .BR \-h ", " \-\-help
 Show clean help.
-.PP
-.B Note:
-the clean help text advertises a
-.BR \-f / \-\-force
-flag, but the command's own parser does
-.B not
-implement it; passing
-.B \-f
-after
-.B clean
-yields "Unknown option". Forcing is done with the global
-.B \-\-yes
-flag placed before the command.
 .SH DISK
 .B wslmole disk
 [\fIpath\fR] [\fIoptions\fR]
 .PP
 The path defaults to
 .I /
-and must be an existing directory. JSON output is emitted for the
-.BR summary ", " files ", and " old
-modes.
+and must be an existing directory. JSON output is emitted for all six modes,
+with NUL-safe filename handling for record-producing modes.
 .SS Modes
 .TP
 .B summary
@@ -248,10 +248,10 @@ Analysis mode (default:
 .BI \-d " N" "\fR, \fB" \-\-depth " N"
 Tree depth for
 .B tree
-mode (default: 3).
+mode, from 0 through 20 (default: 3).
 .TP
 .BI \-n " N" "\fR, \fB" \-\-top " N"
-Number of results to show (default: 10).
+Number of results to show, from 1 through 1000 (default: 10).
 .TP
 .BR \-h ", " \-\-help
 Show disk help.
@@ -262,9 +262,11 @@ Show disk help.
 Developer artifact cleanup. The path defaults to
 .I .
 and must be an existing directory. Cleanup runs in dry-run mode by default;
-use the global
+use
+.BR \-f / \-\-force / \-\-yes
+after the command, or the global
 .B \-\-yes
-flag to delete. Artifact types may be given positionally
+flag before it, to delete. Artifact types may be given positionally
 .RB ( node
 is an alias for
 .BR node_modules ).
@@ -282,25 +284,19 @@ Preview only; perform no deletion (sets
 .BR DRY_RUN=true ).
 This is the default.
 .TP
+.BR \-f ", " \-\-force ", " \-\-yes
+Disable dry-run and skip confirmation prompts.
+.TP
 .BI \-t " LIST" "\fR, \fB" \-\-types " LIST"
 Comma-separated list of artifact types to target.
 .TP
 .BI \-\-older\-than " DAYS"
 Only target artifacts whose modification time is older than
 .I DAYS
-days.
+days. The value must be an integer from 0 through 36500.
 .TP
 .BR \-h ", " \-\-help
 Show dev help.
-.PP
-.B Note:
-as with
-.BR clean ,
-the dev help text advertises
-.BR \-f / \-\-force ,
-but the command does not implement it. Use the global
-.B \-\-yes
-flag instead.
 .SH DIAGNOSE
 .B wslmole diagnose
 [\fItype\fR] [\fIoptions\fR]
@@ -347,7 +343,8 @@ defaults to
 is an alias for
 .BR audit ).
 JSON output is available for
-.BR audit .
+.BR audit
+and includes skipped probes when APT or Snap is unavailable.
 .SS Actions
 .TP
 .B audit
@@ -420,7 +417,9 @@ Show wsl help.
 .PP
 Quick system health scan. Computes a health score (0\-100) and grade
 (Excellent >= 90, Good >= 70, Fair >= 50, otherwise Poor), estimates cleanable
-space, and prints recommendations. This is also the default behavior when
+space from the exact cleanup-eligible files, and prints recommendations.
+Read-only system probes have a configurable deadline; unavailable checks are
+reported as skipped. This is also the default behavior when
 .B wslmole
 is run with no command, and via the global
 .BR \-q / \-\-quick
@@ -434,7 +433,7 @@ any other option is an error.
 Show a risk-labeled action plan from lightweight checks without changing the
 system (read-only). Risk levels are
 .BR low ", " medium ", and " review .
-JSON output is supported.
+JSON output includes plan items and skipped checks.
 .SS Options
 .TP
 .BI \-\-risk " RISK"
@@ -554,6 +553,12 @@ Gates which log messages are written.
 Integer seconds (default
 .BR 86400 ,
 24h). Controls the periodic background update-check frequency.
+.TP
+.B WSLMOLE_PROBE_TIMEOUT
+Integer seconds from 1 through 30 (default
+.BR 2 ).
+Controls the deadline for read-only Snap, APT, systemd, and Windows interop
+probes. Timed-out checks are reported and skipped.
 .SH ENVIRONMENT
 .TP
 .B NO_COLOR
@@ -569,7 +574,7 @@ When
 is used, JSON is written to the caller's original standard output while human
 text is redirected to standard error, so only machine-readable JSON reaches
 stdout. The periodic update check and the interactive menu are suppressed in
-JSON or non-interactive sessions.
+JSON or non-interactive sessions. Disk analysis supports JSON in all six modes.
 .SH SAFETY
 Deletions are guarded by a set of protected paths that are never removed,
 including

@@ -10,17 +10,14 @@ PLAN_DETAILS=()
 PLAN_COMMANDS=()
 PLAN_AUTOS=()
 PLAN_CATEGORIES=()
+PLAN_SKIPPED_CHECKS=()
 PLAN_FILTER_RISK=""
 PLAN_FILTER_AUTO=false
 PLAN_FILTER_CATEGORY=""
 PLAN_FIX_ONLY=""
 
 _plan_json_escape() {
-    local value="$1"
-    value="${value//\\/\\\\}"
-    value="${value//\"/\\\"}"
-    value="${value//$'\n'/\\n}"
-    printf '%s' "$value"
+    json_escape "$1"
 }
 
 _plan_reset() {
@@ -30,6 +27,7 @@ _plan_reset() {
     PLAN_COMMANDS=()
     PLAN_AUTOS=()
     PLAN_CATEGORIES=()
+    PLAN_SKIPPED_CHECKS=()
 }
 
 _plan_add_item() {
@@ -60,39 +58,27 @@ _plan_add_item() {
 }
 
 _plan_sum_old_files() {
-    local dir="$1"
-    local total=0
-    local file size
-    [[ -d "$dir" ]] || { echo 0; return 0; }
-    while IFS= read -r -d '' file; do
-        size=$(get_size_bytes "$file")
-        total=$((total + size))
-    done < <(find "$dir" -type f -mtime +7 -print0 2>/dev/null || true)
-    echo "$total"
+    sum_files_older_than "$1" 7
 }
 
 _plan_sum_rotated_logs() {
-    local total=0
-    local file size
-    [[ -d /var/log ]] || { echo 0; return 0; }
-    while IFS= read -r -d '' file; do
-        size=$(get_size_bytes "$file")
-        total=$((total + size))
-    done < <(find /var/log -type f \( -name "*.gz" -o -name "*.old" -o -name "*.1" \) -print0 2>/dev/null || true)
-    echo "$total"
+    sum_rotated_log_bytes /var/log
 }
 
 _plan_collect_dev_artifacts() {
     local count=0
-    local total=0
-    local dir size
-    while IFS= read -r dir; do
-        [[ -n "$dir" ]] || continue
+    local capped=false
+    local dir
+    while IFS= read -r -d '' dir; do
         count=$((count + 1))
-        size=$(get_size_bytes "$dir")
-        total=$((total + size))
-    done < <(find "$HOME" -maxdepth 4 -type d \( -name node_modules -o -name target -o -name __pycache__ -o -name .venv -o -name venv \) -prune 2>/dev/null | head -20)
-    printf '%s %s\n' "$count" "$total"
+        if (( count >= 20 )); then
+            capped=true
+            break
+        fi
+    done < <(find "$HOME" -maxdepth 4 -type d \
+        \( -name node_modules -o -name target -o -name __pycache__ -o -name .venv -o -name venv \) \
+        -prune -print0 2>/dev/null || true)
+    printf '%s %s\n' "$count" "$capped"
 }
 
 plan_collect() {
@@ -114,21 +100,31 @@ plan_collect() {
         _plan_add_item "Remove rotated logs" "low" "Rotated logs can reclaim $(format_size "$old_logs_bytes")." "wslmole clean logs" "true" "logs"
     fi
 
-    local tmp_bytes var_tmp_bytes tmp_total
+    local tmp_bytes var_tmp_bytes cache_bytes tmp_total
     tmp_bytes=$(_plan_sum_old_files /tmp)
     var_tmp_bytes=$(_plan_sum_old_files /var/tmp)
-    tmp_total=$((tmp_bytes + var_tmp_bytes))
+    cache_bytes=$(_plan_sum_old_files "$HOME/.cache")
+    tmp_total=$((tmp_bytes + var_tmp_bytes + cache_bytes))
     if [[ $tmp_total -gt 0 ]]; then
         _plan_add_item "Remove old temp files" "low" "Temp files older than 7 days can reclaim $(format_size "$tmp_total")." "wslmole clean tmp" "true" "tmp"
     fi
 
     local snap_disabled_count=0
+    local snap_disabled_bytes=0
     if command -v snap &>/dev/null; then
-        snap_disabled_count=$(snap list --all 2>/dev/null | awk '/disabled/' | wc -l)
-        snap_disabled_count=${snap_disabled_count:-0}
+        local snap_output
+        if snap_output=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" snap list --all 2>/dev/null); then
+            read -r snap_disabled_count snap_disabled_bytes < <(snap_disabled_stats "$snap_output")
+        else
+            PLAN_SKIPPED_CHECKS+=("snap")
+        fi
     fi
     if [[ $snap_disabled_count -gt 0 ]]; then
-        _plan_add_item "Review disabled Snap revisions" "medium" "${snap_disabled_count} disabled Snap revision(s) found; review before removal." "wslmole clean snap --dry-run" "false" "snap"
+        local snap_detail="${snap_disabled_count} disabled Snap revision(s) found"
+        if [[ $snap_disabled_bytes -gt 0 ]]; then
+            snap_detail+=" ($(format_size "$snap_disabled_bytes"))"
+        fi
+        _plan_add_item "Review disabled Snap revisions" "medium" "${snap_detail}; review before removal." "wslmole clean snap --dry-run" "false" "snap"
     fi
 
     local disk_pct=0
@@ -140,17 +136,25 @@ plan_collect() {
 
     local upgradable_count=0
     if command -v apt &>/dev/null; then
-        upgradable_count=$(apt list --upgradable 2>/dev/null | grep -c 'upgradable' || true)
-        upgradable_count=${upgradable_count:-0}
+        local apt_output
+        if apt_output=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" apt list --upgradable 2>/dev/null); then
+            upgradable_count=$(printf '%s\n' "$apt_output" | grep -c 'upgradable' || true)
+        else
+            PLAN_SKIPPED_CHECKS+=("apt")
+        fi
     fi
     if [[ $upgradable_count -gt 10 ]]; then
         _plan_add_item "Review package updates" "medium" "${upgradable_count} package(s) can be upgraded." "wslmole packages audit" "false" "packages"
     fi
 
     local failed_count=0
-    if command -v systemctl &>/dev/null && systemctl is-system-running &>/dev/null 2>&1; then
-        failed_count=$(systemctl --no-pager --no-legend list-units --state=failed 2>/dev/null | wc -l)
-        failed_count=${failed_count:-0}
+    if command -v systemctl &>/dev/null && run_probe "$WSLMOLE_PROBE_TIMEOUT" systemctl is-system-running &>/dev/null; then
+        local failed_output
+        if failed_output=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" systemctl --no-pager --no-legend list-units --state=failed 2>/dev/null); then
+            failed_count=$(printf '%s\n' "$failed_output" | sed '/^[[:space:]]*$/d' | wc -l)
+        else
+            PLAN_SKIPPED_CHECKS+=("systemd")
+        fi
     fi
     if [[ $failed_count -gt 0 ]]; then
         _plan_add_item "Investigate failed services" "review" "${failed_count} failed systemd service(s) detected." "wslmole diagnose service" "false" "services"
@@ -164,10 +168,13 @@ plan_collect() {
         fi
     fi
 
-    local dev_count dev_bytes
-    read -r dev_count dev_bytes < <(_plan_collect_dev_artifacts)
+    local dev_count dev_capped
+    read -r dev_count dev_capped < <(_plan_collect_dev_artifacts)
     if [[ ${dev_count:-0} -gt 0 ]]; then
-        _plan_add_item "Review developer artifacts" "review" "Found ${dev_count} artifact(s) in your home directory, up to $(format_size "$dev_bytes") across the first 20 matches." "wslmole dev ~ --dry-run" "false" "dev"
+        local dev_detail="Found ${dev_count} developer artifact director"
+        [[ "$dev_count" -eq 1 ]] && dev_detail+="y" || dev_detail+="ies"
+        [[ "$dev_capped" == true ]] && dev_detail+=" in the first 20 matches"
+        _plan_add_item "Review developer artifacts" "review" "${dev_detail}; run a dedicated scan for exact sizes." "wslmole dev ~ --dry-run" "false" "dev"
     fi
 }
 
@@ -176,23 +183,27 @@ plan_print_text() {
 
     if [[ ${#PLAN_TITLES[@]} -eq 0 ]]; then
         print_success "No recommended actions right now."
-        return 0
+    else
+        echo "  Recommended actions:"
+        echo ""
+        local i display_idx
+        for i in "${!PLAN_TITLES[@]}"; do
+            display_idx=$((i + 1))
+            printf "  %s) %s\n" "$display_idx" "${PLAN_TITLES[$i]}"
+            printf "     Risk:    %s\n" "${PLAN_RISKS[$i]}"
+            printf "     Detail:  %s\n" "${PLAN_DETAILS[$i]}"
+            printf "     Command: %s\n" "${PLAN_COMMANDS[$i]}"
+            echo ""
+        done
+
+        print_info "Run ${BOLD}wslmole fix --dry-run${NC} to preview low-risk cleanup actions."
+        print_info "Run ${BOLD}wslmole fix --yes${NC} to apply low-risk cleanup actions without prompts."
     fi
 
-    echo "  Recommended actions:"
-    echo ""
-    local i display_idx
-    for i in "${!PLAN_TITLES[@]}"; do
-        display_idx=$((i + 1))
-        printf "  %s) %s\n" "$display_idx" "${PLAN_TITLES[$i]}"
-        printf "     Risk:    %s\n" "${PLAN_RISKS[$i]}"
-        printf "     Detail:  %s\n" "${PLAN_DETAILS[$i]}"
-        printf "     Command: %s\n" "${PLAN_COMMANDS[$i]}"
+    if [[ ${#PLAN_SKIPPED_CHECKS[@]} -gt 0 ]]; then
         echo ""
-    done
-
-    print_info "Run ${BOLD}wslmole fix --dry-run${NC} to preview low-risk cleanup actions."
-    print_info "Run ${BOLD}wslmole fix --yes${NC} to apply low-risk cleanup actions without prompts."
+        print_warning "Some checks were unavailable or exceeded ${WSLMOLE_PROBE_TIMEOUT}s: ${PLAN_SKIPPED_CHECKS[*]}"
+    fi
 }
 
 plan_print_json() {
@@ -200,12 +211,18 @@ plan_print_json() {
     local i first=true
     for i in "${!PLAN_TITLES[@]}"; do
         [[ "$first" == true ]] && first=false || json+=","
-        json+="{\"title\":\"$(_plan_json_escape "${PLAN_TITLES[$i]}")\","
-        json+="\"risk\":\"$(_plan_json_escape "${PLAN_RISKS[$i]}")\","
-        json+="\"detail\":\"$(_plan_json_escape "${PLAN_DETAILS[$i]}")\","
-        json+="\"command\":\"$(_plan_json_escape "${PLAN_COMMANDS[$i]}")\","
+        json+="{\"title\":$(json_quote "${PLAN_TITLES[$i]}"),"
+        json+="\"risk\":$(json_quote "${PLAN_RISKS[$i]}"),"
+        json+="\"detail\":$(json_quote "${PLAN_DETAILS[$i]}"),"
+        json+="\"command\":$(json_quote "${PLAN_COMMANDS[$i]}"),"
         json+="\"auto\":${PLAN_AUTOS[$i]},"
-        json+="\"category\":\"$(_plan_json_escape "${PLAN_CATEGORIES[$i]}")\"}"
+        json+="\"category\":$(json_quote "${PLAN_CATEGORIES[$i]}")}"
+    done
+    json+="],\"skipped_checks\":["
+    local skipped sfirst=true
+    for skipped in "${PLAN_SKIPPED_CHECKS[@]+"${PLAN_SKIPPED_CHECKS[@]}"}"; do
+        [[ "$sfirst" == true ]] && sfirst=false || json+=","
+        json+="$(json_quote "$skipped")"
     done
     json+="]}"
     json_output "$json"

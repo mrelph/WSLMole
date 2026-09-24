@@ -55,12 +55,11 @@ default (equivalent to `wslmole scan`).
 | `--no-color` | Set `NO_COLOR=1` and re-initialize colors (disables colored output). |
 | `--format FORMAT` | Set output format. Valid values: `text` (default) or `json`. An invalid value errors and exits 1. Requires an argument. |
 | `--format=FORMAT` | Same as `--format`, using `=` syntax. |
-| `--yes`, `-y` | Set `FORCE=true` **and** `DRY_RUN=false`. Skips confirmation prompts. **This is the real "force" switch** for `clean` and `dev`, and it must be placed *before* the command. |
+| `--yes`, `-y` | Set `FORCE=true` **and** `DRY_RUN=false`. As a global flag it must appear before the command. |
 
 > **Forcing destructive actions.** `clean` and `dev` preview by default
-> (`DRY_RUN=true`). To actually delete, place the global `--yes`/`-y` *before*
-> the command (`wslmole --yes clean apt`), or set `FORCE=true` in the config
-> file. See the [help-vs-code note](#a-note-on--f----force) under `clean`.
+> (`DRY_RUN=true`). To actually delete, place the global `--yes`/`-y` before
+> the command, or pass `-f`/`--force`/`--yes` after `clean` or `dev`.
 
 ---
 
@@ -78,6 +77,7 @@ Only the following keys are valid (`VALID_CONFIG_KEYS`):
 | `VERBOSE` | `true` \| `false` | `false` | When true, enables session logging to the log file. |
 | `WSLMOLE_LOG_LEVEL` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` | `INFO` | Gates which `log_*` messages are written. |
 | `WSLMOLE_UPDATE_INTERVAL` | integer seconds | `86400` (24h) | Frequency of the periodic background update check. |
+| `WSLMOLE_PROBE_TIMEOUT` | integer 1–30 seconds | `2` | Deadline for read-only Snap, APT, systemd, and Windows interop probes. |
 
 **Validation:** malformed lines, unknown keys, and values containing `$ ; \` |`
 are rejected with a config warning on stderr. Only values matching each key's
@@ -99,6 +99,8 @@ allowed pattern are applied.
 - **`safe_delete`** refuses relative paths, blocks `..` path components and `/`,
   and refuses protected paths. It returns `0` success / `1` blocked / `2`
   not-found / `3` permission-denied.
+- **`safe_delete_nul_stream`** routes NUL-delimited cleanup batches through
+  `safe_delete`, preserving unusual filenames and consistent logging.
 - **Root requirements.** APT operations and `journalctl` vacuuming require root
   (`require_root_or_skip` skips with a warning otherwise). The `wsl` command
   requires a WSL environment or it errors out.
@@ -112,8 +114,8 @@ to file descriptor 3 (`JSON_STDOUT_FD`) via `json_output`; regular stdout is
 redirected to stderr so only JSON reaches the caller's stdout. The periodic
 update check and the interactive menu are suppressed in JSON/non-TTY mode.
 
-JSON is supported by a subset of commands/modes; each section below notes its
-JSON behavior.
+Each command section below documents its JSON fields. Disk analysis supports
+JSON in all six modes.
 
 ---
 
@@ -132,13 +134,14 @@ wslmole clean [category...] [options]
 Removes cached packages, rotated logs, stale temp files, browser caches, user
 caches, and WSL log files. Categories may be passed positionally
 (`wslmole clean apt logs`) or via `-c`/`--category`. Cleanup is **previewed by
-default** — see [forcing](#a-note-on--f----force).
+default**.
 
 ### Options
 
 | Option | Argument | Default | Description |
 |--------|----------|---------|-------------|
 | `-n`, `--dry-run` | — | (already the default) | Enable dry-run (preview only, no deletion); sets `DRY_RUN=true`. |
+| `-f`, `--force`, `--yes` | — | — | Disable dry-run and skip confirmation prompts. |
 | `-c`, `--category LIST` | comma-separated list | — | Categories to clean. If omitted, the default category set is used. |
 | `-h`, `--help` | — | — | Show `clean` help. |
 
@@ -164,14 +167,6 @@ Special tokens:
 `snap`, `logs`, `tmp`, `wsl`. (`browser` and `user` are opt-in/low-value in
 WSL.) An unknown category prints `suggest_correction`.
 
-### A note on `-f` / `--force`
-
-The `clean` help text advertises `-f, --force`, but **`clean`'s own parser has
-no `-f`/`--force` case** — passing it *after* `clean` triggers `Unknown option`.
-Forcing actually comes from the **global `--yes`/`-y`** flag placed *before* the
-command (which sets `FORCE=true` and `DRY_RUN=false`), or from `FORCE=true` in
-the config file. Do not rely on `wslmole clean -f`.
-
 ### Root requirements
 
 `apt` (apt-get clean/autoclean) and the `journalctl --vacuum-time` step of
@@ -183,6 +178,7 @@ the config file. Do not rely on `wslmole clean -f`.
 wslmole clean                       # preview default categories (apt,snap,logs,tmp,wsl)
 wslmole clean apt logs              # preview only apt + logs
 wslmole clean -c browser,user       # preview browser + user caches
+wslmole clean --yes all             # actually clean every category
 wslmole --yes clean all             # actually clean every category (force)
 wslmole --yes clean apt             # actually clean APT cache (run as root)
 ```
@@ -209,8 +205,8 @@ must exist and be a directory. `disk` is read-only.
 | Option | Argument | Default | Description |
 |--------|----------|---------|-------------|
 | `-m`, `--mode MODE` | mode name | `summary` | Analysis mode (see below). |
-| `-d`, `--depth N` | integer | `3` | Tree depth for `tree` mode. |
-| `-n`, `--top N` | integer | `10` | Number of results to show. |
+| `-d`, `--depth N` | integer 0–20 | `3` | Tree depth for `tree` mode. |
+| `-n`, `--top N` | integer 1–1000 | `10` | Number of results to show. |
 | `-h`, `--help` | — | — | Show `disk` help. |
 
 ### Modes (`DISK_MODES`)
@@ -220,15 +216,16 @@ The mode can also be given positionally with aliases.
 | Mode | Positional aliases | Action |
 |------|--------------------|--------|
 | `summary` | `usage` | `df` overview + top-level dir sizes (for `/` shows `/home /var /tmp /opt /usr /snap`), or immediate subdir sizes. |
-| `tree` | — | `du --max-depth` hierarchical tree sorted by size (`head -40`). |
+| `tree` | — | NUL-delimited `du --max-depth` tree sorted by size (first 40 records). |
 | `files` | `file`, `large`, `largest` | Largest individual files (`find -printf` size, top N). |
-| `folders` | `folder`, `dirs` | Largest immediate subdirectories (`du -sb`, top N). |
-| `types` | `type` | Usage grouped by file extension (`awk` aggregation). |
+| `folders` | `folder`, `dirs` | Largest immediate subdirectories, top N. |
+| `types` | `type` | Usage grouped by file extension. |
 | `old` | — | Files not modified in 90+ days, top N by size. |
 
 ### JSON output
 
-JSON is emitted for the `summary`, `files`, and `old` modes.
+JSON is emitted for all six modes. Record-producing modes use `items[]` and
+preserve spaces, tabs, newlines, and control characters in paths.
 
 ### Examples
 
@@ -266,8 +263,9 @@ default**.
 | Option | Argument | Default | Description |
 |--------|----------|---------|-------------|
 | `-n`, `--dry-run` | — | (already the default) | Enable dry-run (preview only); sets `DRY_RUN=true`. |
+| `-f`, `--force`, `--yes` | — | — | Disable dry-run and skip confirmation prompts. |
 | `-t`, `--types LIST` | comma-separated list | — | Artifact types to target. If omitted, the full list is used. |
-| `--older-than DAYS` | integer days | — | Only target artifacts whose mtime is older than `DAYS` days. |
+| `--older-than DAYS` | integer 0–36500 | — | Only target artifacts whose mtime is older than `DAYS` days. |
 | `-h`, `--help` | — | — | Show `dev` help. |
 
 ### Artifact types (`DEV_ARTIFACTS`)
@@ -281,16 +279,10 @@ default**.
 - `all` — expands to the full artifact list.
 - **Default when no type is given:** the full `DEV_ARTIFACTS` list.
 
-### A note on `-f` / `--force`
-
-As with `clean`, the `dev` help text advertises `-f, --force`, but **`dev`'s
-parser has no `-f`/`--force` case** (it would hit `Unknown option` after `dev`).
-Forcing comes from the global `--yes`/`-y` flag placed *before* the command, or
-`FORCE=true` in config.
-
 ### JSON output
 
-JSON includes `path`, `count`, `total_bytes`, and `dry_run`.
+JSON includes `path`, `count`, `total_bytes`, `dry_run`, `delete_failures`, and
+an `items[]` array containing each exact path and byte count.
 
 ### Examples
 
@@ -300,6 +292,7 @@ wslmole dev ~/projects              # preview artifacts under ~/projects
 wslmole dev node                    # target node_modules only
 wslmole dev -t target,dist          # target Rust target + dist dirs
 wslmole dev --older-than 30 ~/code  # only artifacts older than 30 days
+wslmole dev --yes all ~/projects    # actually delete all artifacts
 wslmole --yes dev all ~/projects    # actually delete all artifacts (force)
 ```
 
@@ -391,7 +384,8 @@ root (and confirmation).
 
 ### JSON output
 
-JSON output is available for `audit` (includes `has_updates`).
+JSON output is available for `audit` and includes `has_updates` plus
+`skipped_checks` for probes that failed or exceeded the configured deadline.
 
 ### Examples
 
@@ -499,13 +493,17 @@ A `health_score` from 0–100 is computed, with a grade:
 - No `.wslconfig` in WSL → −5.
 - More than 10 upgradable APT packages → −5.
 
-The scan also reports a **cleanable space estimate** (APT cache, old/rotated
-logs, disabled snap revisions at ~100MB/rev, `/tmp`) and recommendations.
+The scan also reports a **cleanable space estimate** that matches cleanup
+eligibility: APT cache, rotated logs, exact disabled Snap revision files, and
+files older than seven days under `/tmp`, `/var/tmp`, and `~/.cache`.
+Read-only probes have a configurable deadline; unavailable checks do not block
+the report.
 
 ### JSON output
 
 JSON output is supported and includes `health_score`, `grade`,
-`memory_percent`, `disk_percent`, `cleanable{...}`, and `recommendations`.
+`memory_percent`, `disk_percent`, `cleanable{...}`, `recommendations`, and
+`skipped_checks`.
 
 ### Examples
 
@@ -555,7 +553,7 @@ under `$HOME` (maxdepth 4, first 20: `node_modules`, `target`, `__pycache__`,
 ### JSON output
 
 JSON output is supported. The output is `items[]`, each with `title`, `risk`,
-`detail`, `command`, `auto`, and `category`.
+`detail`, `command`, `auto`, and `category`, plus top-level `skipped_checks`.
 
 ### Examples
 

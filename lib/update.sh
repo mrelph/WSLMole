@@ -322,7 +322,7 @@ _get_install_dir() {
 
 _is_git_repo() {
     local dir="$1"
-    [[ -d "$dir/.git" ]] || git -C "$dir" rev-parse --git-dir &>/dev/null
+    [[ "$(git -C "$dir" rev-parse --is-inside-work-tree 2>/dev/null)" == "true" ]]
 }
 
 _record_update_check() {

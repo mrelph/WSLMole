@@ -100,13 +100,21 @@ packages_audit() {
     print_header "Package Update Check"
 
     local has_updates=false
+    local -a skipped_checks=()
 
     # APT updates
     if command -v apt &>/dev/null; then
         print_info "Checking APT updates..."
 
         local upgradable
-        upgradable=$(apt list --upgradable 2>/dev/null | grep -v "^Listing" || true)
+        local apt_checked=true
+        if ! upgradable=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" apt list --upgradable 2>/dev/null); then
+            print_warning "APT check did not complete within ${WSLMOLE_PROBE_TIMEOUT}s"
+            skipped_checks+=("apt")
+            upgradable=""
+            apt_checked=false
+        fi
+        upgradable=$(printf '%s\n' "$upgradable" | grep -v "^Listing" || true)
 
         if [[ -n "$upgradable" ]]; then
             local apt_count
@@ -117,7 +125,7 @@ packages_audit() {
             echo "$upgradable" | while IFS= read -r line; do
                 print_item "$line"
             done
-        else
+        elif [[ "$apt_checked" == true ]]; then
             print_success "All APT packages are up to date"
         fi
     else
@@ -131,7 +139,13 @@ packages_audit() {
         print_info "Checking Snap updates..."
 
         local snap_updates
-        snap_updates=$(snap refresh --list 2>/dev/null || true)
+        local snap_checked=true
+        if ! snap_updates=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" snap refresh --list 2>/dev/null); then
+            print_warning "Snap check did not complete within ${WSLMOLE_PROBE_TIMEOUT}s"
+            skipped_checks+=("snap")
+            snap_updates=""
+            snap_checked=false
+        fi
 
         if [[ -n "$snap_updates" && ! "$snap_updates" =~ "All snaps up to date" ]]; then
             has_updates=true
@@ -140,7 +154,7 @@ packages_audit() {
             echo "$snap_updates" | while IFS= read -r line; do
                 print_item "$line"
             done
-        else
+        elif [[ "$snap_checked" == true ]]; then
             print_success "All Snap packages are up to date"
         fi
     else
@@ -150,9 +164,17 @@ packages_audit() {
     echo ""
 
     if [[ "${FORMAT:-text}" == "json" ]]; then
-        json_output "$(to_json_kv "has_updates" "$has_updates")"
-    elif [[ "$has_updates" == false ]]; then
+        local skipped_json="[" skipped first=true
+        for skipped in "${skipped_checks[@]+"${skipped_checks[@]}"}"; do
+            [[ "$first" == true ]] && first=false || skipped_json+=","
+            skipped_json+="$(json_quote "$skipped")"
+        done
+        skipped_json+="]"
+        json_output "{\"has_updates\":${has_updates},\"skipped_checks\":${skipped_json}}"
+    elif [[ "$has_updates" == false && ${#skipped_checks[@]} -eq 0 ]]; then
         print_success "System is fully up to date!"
+    elif [[ "$has_updates" == false ]]; then
+        print_warning "Update status is partial because some checks were skipped"
     else
         print_info "Run 'wslmole packages update' to install updates"
     fi
@@ -324,7 +346,13 @@ packages_clean() {
         print_info "Snap Old Revisions:"
 
         local disabled_snaps
-        disabled_snaps=$(snap list --all 2>/dev/null | awk '/disabled/{print $1, $3}' || true)
+        local snap_output
+        if snap_output=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" snap list --all 2>/dev/null); then
+            disabled_snaps=$(printf '%s\n' "$snap_output" | awk '/disabled/{print $1, $3}' || true)
+        else
+            print_warning "Snap service did not respond within ${WSLMOLE_PROBE_TIMEOUT}s - skipping"
+            disabled_snaps=""
+        fi
 
         if [[ -n "$disabled_snaps" ]]; then
             local snap_count
@@ -360,7 +388,10 @@ packages_list() {
     # Snap packages
     if command -v snap &>/dev/null; then
         local snap_output
-        snap_output=$(snap list 2>/dev/null || true)
+        if ! snap_output=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" snap list 2>/dev/null); then
+            print_warning "Snap service did not respond within ${WSLMOLE_PROBE_TIMEOUT}s - skipping"
+            snap_output=""
+        fi
 
         if [[ -n "$snap_output" ]]; then
             local snap_count

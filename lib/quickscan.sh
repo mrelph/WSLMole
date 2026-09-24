@@ -83,37 +83,32 @@ MOLE
     local snap_bytes=0
     local tmp_bytes=0
     local cleanable_total=0
+    local -a skipped_checks=()
 
     # APT cache
     if [[ -d /var/cache/apt/archives ]]; then
-        apt_cache_bytes=$(du -sb /var/cache/apt/archives/ 2>/dev/null | cut -f1) || true
-        apt_cache_bytes=${apt_cache_bytes:-0}
+        apt_cache_bytes=$(get_size_bytes /var/cache/apt/archives)
     fi
 
     # Old/rotated logs
-    local log_files
-    log_files=$(find /var/log -type f \( -name "*.gz" -o -name "*.old" -o -name "*.1" \) 2>/dev/null || true)
-    if [[ -n "$log_files" ]]; then
-        while IFS= read -r file; do
-            local fsize
-            fsize=$(stat -c%s "$file" 2>/dev/null || echo 0)
-            old_logs_bytes=$((old_logs_bytes + fsize))
-        done <<< "$log_files"
-    fi
+    old_logs_bytes=$(sum_rotated_log_bytes /var/log)
 
     # Snap disabled revisions
     local snap_disabled_count=0
     if command -v snap &>/dev/null; then
-        snap_disabled_count=$(snap list --all 2>/dev/null | awk '/disabled/' | wc -l)
-        # Estimate ~100MB per disabled snap revision
-        snap_bytes=$((snap_disabled_count * 104857600))
+        local snap_output
+        if snap_output=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" snap list --all 2>/dev/null); then
+            read -r snap_disabled_count snap_bytes < <(snap_disabled_stats "$snap_output")
+        else
+            skipped_checks+=("snap")
+        fi
     fi
 
-    # Tmp files
-    if [[ -d /tmp ]]; then
-        tmp_bytes=$(du -sb /tmp 2>/dev/null | cut -f1) || true
-        tmp_bytes=${tmp_bytes:-0}
-    fi
+    # Match the cleanup command exactly: files older than seven days in the
+    # two temp trees and the user's cache.
+    tmp_bytes=$(( $(sum_files_older_than /tmp 7) + \
+        $(sum_files_older_than /var/tmp 7) + \
+        $(sum_files_older_than "$HOME/.cache" 7) ))
 
     cleanable_total=$((apt_cache_bytes + old_logs_bytes + snap_bytes + tmp_bytes))
 
@@ -143,9 +138,15 @@ MOLE
     # to the pure _quickscan_compute_score helper (see above).
 
     local failed_count=0
-    if command -v systemctl &>/dev/null && systemctl is-system-running &>/dev/null 2>&1; then
-        failed_count=$(systemctl --no-pager --no-legend list-units --state=failed 2>/dev/null | wc -l)
-        failed_count=${failed_count:-0}
+    if command -v systemctl &>/dev/null; then
+        if run_probe "$WSLMOLE_PROBE_TIMEOUT" systemctl is-system-running &>/dev/null; then
+            local failed_output
+            if failed_output=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" systemctl --no-pager --no-legend list-units --state=failed 2>/dev/null); then
+                failed_count=$(printf '%s\n' "$failed_output" | sed '/^[[:space:]]*$/d' | wc -l)
+            else
+                skipped_checks+=("systemd")
+            fi
+        fi
     fi
 
     local has_wslconfig=false
@@ -163,9 +164,13 @@ MOLE
     fi
 
     local upgradable_count=0
-    if command -v apt-get &>/dev/null; then
-        upgradable_count=$(apt list --upgradable 2>/dev/null | grep -c 'upgradable' || true)
-        upgradable_count=${upgradable_count:-0}
+    if command -v apt &>/dev/null; then
+        local apt_output
+        if apt_output=$(run_probe "$WSLMOLE_PROBE_TIMEOUT" apt list --upgradable 2>/dev/null); then
+            upgradable_count=$(printf '%s\n' "$apt_output" | grep -c 'upgradable' || true)
+        else
+            skipped_checks+=("apt")
+        fi
     fi
 
     _quickscan_compute_score "$mem_percentage" "$disk_percentage" "$failed_count" \
@@ -198,13 +203,19 @@ MOLE
         local rfirst=true
         for rec in "${recommendations[@]+"${recommendations[@]}"}"; do
             if [[ "$rfirst" == true ]]; then rfirst=false; else rec_json+=","; fi
-            rec="${rec//\\/\\\\}"
-            rec="${rec//\"/\\\"}"
-            rec_json+="\"${rec}\""
+            rec_json+="$(json_quote "$rec")"
         done
         rec_json+="]"
 
-        json_output "{\"health_score\":${health_score},\"grade\":\"${grade}\",\"memory_percent\":${mem_percentage},\"disk_percent\":${disk_percentage},\"cleanable\":{\"apt_cache\":${apt_cache_bytes},\"old_logs\":${old_logs_bytes},\"snap\":${snap_bytes},\"tmp\":${tmp_bytes},\"total\":${cleanable_total}},\"recommendations\":${rec_json}}"
+        local skipped_json="["
+        local sfirst=true skipped
+        for skipped in "${skipped_checks[@]+"${skipped_checks[@]}"}"; do
+            if [[ "$sfirst" == true ]]; then sfirst=false; else skipped_json+=","; fi
+            skipped_json+="$(json_quote "$skipped")"
+        done
+        skipped_json+="]"
+
+        json_output "{\"health_score\":${health_score},\"grade\":$(json_quote "$grade"),\"memory_percent\":${mem_percentage},\"disk_percent\":${disk_percentage},\"cleanable\":{\"apt_cache\":${apt_cache_bytes},\"old_logs\":${old_logs_bytes},\"snap\":${snap_bytes},\"tmp\":${tmp_bytes},\"total\":${cleanable_total}},\"recommendations\":${rec_json},\"skipped_checks\":${skipped_json}}"
         return 0
     fi
 
@@ -298,7 +309,7 @@ MOLE
     if [[ $snap_bytes -gt 0 ]]; then
         _show_cleanable_item "Snap ($snap_disabled_count revs)" "$snap_bytes"
     fi
-    _show_cleanable_item "Tmp files" "$tmp_bytes"
+    _show_cleanable_item "Old temp/cache files" "$tmp_bytes"
 
     if [[ "$has_cleanable" == true ]]; then
         echo ""
@@ -308,6 +319,11 @@ MOLE
     fi
 
     echo ""
+
+    if [[ ${#skipped_checks[@]} -gt 0 ]]; then
+        print_warning "Some checks were unavailable or exceeded ${WSLMOLE_PROBE_TIMEOUT}s: ${skipped_checks[*]}"
+        echo ""
+    fi
 
     # ── Recommendations ───────────────────────────────────────────
 

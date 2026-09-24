@@ -7,15 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added bounded system probes with `WSLMOLE_PROBE_TIMEOUT` (default 2 seconds). Quick scan, plans, and package audits now report skipped checks instead of hanging when services such as Snap are installed but unavailable.
+- Added JSON output for every disk-analysis mode and included exact item paths in developer-cleanup JSON.
+
 ### Fixed
 
 - Anchored the path-traversal guard so `safe_delete` reliably blocks `..` path components anywhere in a target (not just leading ones).
 - Dropped the `bc` dependency; numeric comparisons (health-score penalties, percentages, sizes) now use pure Bash/`awk` arithmetic, so WSLMole no longer requires `bc` to be installed.
 - Config warnings are now surfaced on stderr: malformed lines, unknown keys, and values containing shell metacharacters (`$ ; ` | `) are reported by `load_config` instead of being silently skipped.
+- Reclaim estimates now match cleanup eligibility: rotated-log patterns are shared, temp/cache totals include only files older than seven days, and disabled Snap usage is read from the actual revision files.
+- Disk and developer scans now preserve spaces, tabs, newlines, and JSON control characters in filenames.
+- Numeric disk and developer options reject malformed or out-of-range values with a non-zero exit status.
+- Browser, cache, and trash cleanup now route every target through `safe_delete` instead of bypassing validation and logging with direct `find -delete`.
 
 ### Changed
 
 - Documentation overhaul: reconciled `README.md`, `docs/wslmole.1`, `docs/config.example`, and `DEVELOPMENT.md` with the actual code. Removed claims for capabilities that do not exist (network diagnostics, disk duplicate/mount-point modes, WSL filesystem-performance/distro-management actions), documented the previously omitted actions (`packages autoremove|clean|list`, `wsl compact`, disk `tree`/`folders`/`types` modes), fixed the man page's disk top-results flag (`-n`, not `-N`), and updated `config.example` to drop the removed `WSLMOLE_PROTECTED_PATHS_EXTRA` array and add `WSLMOLE_UPDATE_INTERVAL`.
+- `clean` and `dev` now accept `-f`, `--force`, or `--yes` after the command, matching their help text.
+- Action-plan developer discovery is bounded to 20 lightweight matches; exact directory sizes are deferred to `wslmole dev`.
 
 ## [2.0.0] - 2026-06-12
 

@@ -162,6 +162,24 @@ for name in "wslmole_foo..bar" "wslmole_..hidden" "wslmole_trailing.."; do
     fi
 done
 
+# Test 11: NUL-delimited batch deletion preserves unusual filenames
+echo "Test 11: Batch deletion handles unusual filenames"
+TESTS_RUN=$((TESTS_RUN + 1))
+TEST_BATCH_DIR=$(mktemp -d /tmp/wslmole_batch_XXXXXX)
+touch "$TEST_BATCH_DIR/normal"
+touch "$TEST_BATCH_DIR/"$'line\nbreak'
+export DRY_RUN=false
+safe_delete_nul_stream "batch test" \
+    < <(find "$TEST_BATCH_DIR" -mindepth 1 -maxdepth 1 -print0) >/dev/null 2>&1
+if [[ -z "$(find "$TEST_BATCH_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+    echo "✓ Batch deletion handled newline-containing filename"
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+    echo "✗ Batch deletion left files behind"
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
+rmdir "$TEST_BATCH_DIR"
+
 echo ""
 echo "============================="
 echo "Tests run: $TESTS_RUN"

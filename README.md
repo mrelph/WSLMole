@@ -34,7 +34,14 @@ cd WSLMole
 ./install.sh
 ```
 
-`install.sh` symlinks the `wslmole` entry script into `/usr/local/bin/wslmole` and installs the man page to `/usr/local/share/man/man1/wslmole.1`. If the installer cannot write to those locations, it prints the equivalent `sudo` commands for you to run manually.
+`install.sh` is idempotent (safe to re-run) and:
+
+- symlinks the `wslmole` entry script into `/usr/local/bin/wslmole`;
+- installs the man page to `/usr/local/share/man/man1/wslmole.1` and refreshes the man-page database;
+- installs **bash and zsh completions** (system-wide, or to your per-user XDG directory as a fallback);
+- checks dependencies and reports whether self-update is available.
+
+If the installer cannot write to a system location, it prints the equivalent `sudo` commands for you to run manually.
 
 After installation, read the manual any time with:
 
@@ -42,13 +49,32 @@ After installation, read the manual any time with:
 man wslmole
 ```
 
-> **Note:** Install from a `git clone` (not a downloaded archive). The self-update command (`wslmole update`) requires a Git checkout — it fetches tags and checks out the latest release, and will not run without the `.git` directory.
+### Dependencies
+
+- **Required:** Bash 4+ and standard `coreutils`/`findutils` (`find`, `du`, `stat`, `df`, `awk`, `sed`, `grep`). The installer aborts only if one of these is missing.
+- **Optional:** `git` (required for `wslmole update` self-update) and `mandoc`/`man` (to read the man page). Missing optional dependencies are reported as warnings — they never fail the core install.
+
+> **Note:** Install from a `git clone` (not a downloaded archive). The self-update command (`wslmole update`) requires a Git checkout — it fetches tags and checks out the latest release, and will not run without the `.git` directory. The installer detects this and tells you whether self-update is available.
 
 If you prefer not to symlink, add the project directory to your PATH instead:
 
 ```bash
 export PATH="/path/to/WSLMole:$PATH"
 ```
+
+### Uninstall
+
+```bash
+./uninstall.sh
+```
+
+This removes the symlink, man page, and shell completions. It leaves your config (`~/.config/wslmole`) and data (`~/.local/share/wslmole`) in place; add `--purge` to remove those as well:
+
+```bash
+./uninstall.sh --purge
+```
+
+Like the installer, `uninstall.sh` is idempotent — removing something that is already gone is reported and skipped, never an error.
 
 ---
 
